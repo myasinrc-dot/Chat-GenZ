@@ -20,11 +20,14 @@
         .box button { padding: 10px 15px; background: #128c7e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         
         .contact-list { list-style: none; padding: 0; margin: 0; }
-        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; transition: 0.2s; position: relative; }
         .contact-list li:hover { background: #f0f0f0; }
-        .contact-info { display: flex; flex-direction: column; }
+        .contact-info { display: flex; flex-direction: column; flex: 1; }
         .contact-name { font-weight: bold; color: #333; font-size: 16px; }
         .contact-pin { color: #888; font-size: 13px; }
+
+        /* Badge Notifikasi Angka */
+        .badge-notif { background-color: #25d366; color: white; border-radius: 50%; padding: 3px 8px; font-size: 12px; font-weight: bold; text-align: center; min-width: 12px; display: inline-block; }
 
         .chat-box { background: #efeae2; padding: 0; border-radius: 8px; border: 1px solid #ccc; overflow: hidden; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .chat-header { background: #075e54; color: white; padding: 10px 15px; margin: 0; display: flex; align-items: center; gap: 15px; }
@@ -38,7 +41,6 @@
         .input-group input { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
         .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
-        /* Gaya Pop-up Modal Profil */
         #modalProfil { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center; }
         .modal-content input { margin-bottom: 15px; width: 100%; box-sizing: border-box; }
@@ -47,7 +49,6 @@
 </head>
 <body>
 
-    <!-- NAVIGASI ATAS (Foto, Nama, PIN) -->
     <div class="header">
         <div class="header-profile">
             {% if user_aktif.foto_profil == 'default.png' %}
@@ -67,7 +68,6 @@
         </div>
     </div>
 
-    <!-- MODAL EDIT PROFIL -->
     <div id="modalProfil">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
@@ -87,7 +87,6 @@
 
     <div class="container">
         
-        <!-- KOTAK KONTAK -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
             <form action="/add_contact" method="POST">
@@ -97,21 +96,24 @@
             
             <h4 style="margin-bottom: 10px; color: #333; margin-top: 25px;">Daftar Kontak (Klik untuk Chat):</h4>
             <ul class="contact-list">
-                {% for teman in daftar_teman %}
-                    <li onclick="bukaChat('{{ teman.id }}', '{{ teman.nama }}', '{{ teman.foto_profil }}')">
+                {% for item in daftar_teman %}
+                    <li onclick="bukaChat('{{ item.user.id }}', '{{ item.user.nama }}', '{{ item.user.foto_profil }}')">
                         
-                        <!-- Logika Menampilkan Foto Teman -->
-                        {% if teman.foto_profil == 'default.png' %}
-                            <img src="https://ui-avatars.com/api/?name={{ teman.nama }}&background=random" class="foto-profil" alt="Foto">
+                        {% if item.user.foto_profil == 'default.png' %}
+                            <img src="https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random" class="foto-profil" alt="Foto">
                         {% else %}
-                            <img src="{{ url_for('static', filename='uploads/' + teman.foto_profil) }}" class="foto-profil" alt="Foto">
+                            <img src="{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}" class="foto-profil" alt="Foto">
                         {% endif %}
                         
                         <div class="contact-info">
-                            <!-- Menampilkan Nama, BUKAN Nomor HP -->
-                            <span class="contact-name">{{ teman.nama }}</span>
-                            <span class="contact-pin">PIN: {{ teman.pin }}</span>
+                            <span class="contact-name">{{ item.user.nama }}</span>
+                            <span class="contact-pin">PIN: {{ item.user.pin }}</span>
                         </div>
+
+                        <!-- BADGE NOTIFIKASI ANGKA -->
+                        <span id="badge-{{ item.user.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">
+                            {{ item.unread }}
+                        </span>
                     </li>
                 {% else %}
                     <li style="color: gray; font-style: italic; cursor: default; justify-content: center;">Belum ada kontak. Invite PIN di atas!</li>
@@ -119,7 +121,6 @@
             </ul>
         </div>
 
-        <!-- KOTAK CHAT PRIVATE -->
         <div class="chat-box" id="chatArea">
             <div class="chat-header">
                 <img id="chatFotoTeman" src="" class="foto-profil" style="display: none;" alt="Foto">
@@ -151,12 +152,10 @@
         const chatFotoTeman = document.getElementById('chatFotoTeman');
         const namaTemanAktif = document.getElementById('namaTemanAktif');
 
-        // Saat Kontak di Klik
         function bukaChat(friendId, friendNama, friendFoto) {
             activeFriendId = friendId;
             namaTemanAktif.innerText = friendNama;
             
-            // Atur foto di Header Chat
             chatFotoTeman.style.display = 'block';
             if(friendFoto === 'default.png') {
                 chatFotoTeman.src = "https://ui-avatars.com/api/?name=" + friendNama + "&background=random";
@@ -167,7 +166,13 @@
             document.getElementById('chatArea').style.display = 'block';
             boxChat.innerHTML = '';
 
-            // Ambil histori chat
+            // Hilangkan badge notifikasi saat chat dibuka
+            const badge = document.getElementById('badge-' + friendId);
+            if (badge) {
+                badge.style.display = 'none';
+                badge.innerText = '0';
+            }
+
             fetch('/get_chat/' + friendId)
                 .then(res => res.json())
                 .then(data => {
@@ -191,9 +196,20 @@
         };
 
         socket.on('terima_pesan_private', function(data) {
+            // Jika pesan masuk untuk chat yang sedang aktif dibuka
             if ((data.sender_id == activeFriendId && data.receiver_id == currentUserId) || 
                 (data.sender_id == currentUserId && data.receiver_id == activeFriendId)) {
                 tampilkanPesan(data.pesan, data.sender_id == currentUserId);
+            }
+            
+            // Jika pesan masuk dari pengirim lain yang sedang TIDAK dibuka chatnya
+            if (data.receiver_id == currentUserId && data.sender_id != activeFriendId) {
+                const badge = document.getElementById('badge-' + data.sender_id);
+                if (badge) {
+                    let currentCount = parseInt(badge.innerText) || 0;
+                    badge.innerText = currentCount + 1;
+                    badge.style.display = 'inline-block';
+                }
             }
         });
 

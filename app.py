@@ -13,7 +13,7 @@ app.config['SECRET_KEY'] = 'kunci_rahasia_bebas_123'
 # KONFIGURASI FOLDER UNTUK MENYIMPAN FOTO PROFIL
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'static', 'uploads')
 if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER) # Otomatis buat folder jika belum ada
+    os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # KONFIGURASI DATABASE
@@ -21,7 +21,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chatgenz.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# TABEL USER (Telah ditambahkan Nama & Foto Profil)
+# TABEL USER
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nomor_hp = db.Column(db.String(20), unique=True, nullable=False)
@@ -35,13 +35,14 @@ class Contact(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     friend_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-# TABEL PESAN (PRIVATE CHAT)
+# TABEL PESAN (DITAMBAHKAN KOLOM DIBACA)
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     pesan = db.Column(db.Text, nullable=False)
     waktu = db.Column(db.DateTime, default=datetime.utcnow)
+    dibaca = db.Column(db.Boolean, default=False)
 
 # BUAT DATABASE
 with app.app_context():
@@ -86,16 +87,21 @@ def chat():
     user_sekarang_id = session['user_id']
     user_aktif = User.query.get(user_sekarang_id)
     
+    if not user_aktif:
+        session.clear()
+        return redirect(url_for('login'))
+    
     daftar_kontak_relasi = Contact.query.filter_by(user_id=user_sekarang_id).all()
     daftar_teman = []
     for relasi in daftar_kontak_relasi:
         teman = User.query.get(relasi.friend_id)
         if teman:
-            daftar_teman.append(teman)
+            # Hitung pesan yang belum dibaca dari teman ini
+            unread_count = Message.query.filter_by(sender_id=teman.id, receiver_id=user_sekarang_id, dibaca=False).count()
+            daftar_teman.append({'user': teman, 'unread': unread_count})
 
     return render_template('index.html', user_aktif=user_aktif, daftar_teman=daftar_teman)
 
-# ROUTE BARU: UPDATE PROFIL
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     if 'user_id' not in session:
@@ -111,7 +117,6 @@ def update_profile():
     if foto and foto.filename != '':
         filename = secure_filename(foto.filename)
         ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'jpg'
-        # Format nama file: ID_waktu.jpg (Mencegah nama file bentrok)
         new_filename = f"user_{user.id}_{int(datetime.utcnow().timestamp())}.{ext}"
         
         foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
@@ -150,6 +155,13 @@ def get_chat(friend_id):
         return jsonify([])
     
     user_id = session['user_id']
+    
+    # Tandai semua pesan dari teman ini menjadi terbaca (dibaca = True)
+    pesan_belum_dibaca = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, dibaca=False).all()
+    for p in pesan_belum_dibaca:
+        p.dibaca = True
+    db.session.commit()
+
     pesan_list = Message.query.filter(
         ((Message.sender_id == user_id) & (Message.receiver_id == friend_id)) |
         ((Message.sender_id == friend_id) & (Message.receiver_id == user_id))
@@ -174,7 +186,8 @@ def handle_private_message(data):
     receiver_id = data['receiver_id']
     pesan_teks = data['pesan']
 
-    pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks)
+    # Pesan baru default dibaca = False
+    pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, dibaca=False)
     db.session.add(pesan_baru)
     db.session.commit()
 
