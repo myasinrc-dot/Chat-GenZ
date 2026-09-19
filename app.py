@@ -4,14 +4,11 @@ from flask_socketio import SocketIO, emit
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'kunci_rahasia_bebas_123'
 
-# Konfigurasi SocketIO eksplisit untuk menangani proxy Render dan mencegah timeout
 socketio = SocketIO(
     app,
-    async_mode='gevent',
+    async_mode='eventlet',
     manage_session=False,
-    cors_allowed_origins="*",
-    logger=True,
-    engineio_logger=True
+    cors_allowed_origins="*"
 )
 
 @app.route('/')
