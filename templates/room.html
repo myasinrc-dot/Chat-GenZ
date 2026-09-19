@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - Chat-GenZ Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #efeae2; display: flex; flex-direction: column; height: 100vh; }
+        .chat-header { background: #075e54; color: white; padding: 10px 15px; display: flex; align-items: center; justify-content: space-between; }
+        .foto-profil { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
+        
+        #boxChat { list-style-type: none; padding: 15px; flex: 1; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
+        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; display: table; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); position: relative; word-break: break-word; }
+        .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0 !important; }
+        .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0 !important; }
+        
+        .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
+        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 3px; }
+
+        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; align-items: center; border-top: 1px solid #ccc; }
+        .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-group label { cursor: pointer; font-size: 22px; padding: 5px; color: #128c7e; }
+        .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="chat-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <button onclick="window.location.href='/chat'" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer;">⬅</button>
+            {% if tipe == 'private' %}
+                <img src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
+                <div>
+                    <h3 style="margin: 0; font-size: 16px;">{{ target.nama }}</h3>
+                    <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">{{ last_seen_str }}</span>
+                </div>
+            {% else %}
+                <img src="https://ui-avatars.com/api/?name={{ target.nama_grup }}&background=075e54&color=fff" class="foto-profil">
+                <div>
+                    <h3 style="margin: 0; font-size: 16px;">{{ target.nama_grup }}</h3>
+                    <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">Grup Chat</span>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <ul id="boxChat"></ul>
+    
+    <div class="input-group">
+        <label for="inputGambar">📷</label>
+        <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
+        <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
+        <button id="btnKirim">Kirim</button>
+    </div>
+
+    <script>
+        const currentUserId = "{{ user_aktif.id }}", currentUserName = "{{ user_aktif.nama }}", chatType = "{{ tipe }}", targetId = "{{ target.id }}";
+        let typingTimer = null;
+        var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
+
+        function playSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(); osc.stop(ctx.currentTime + 0.15);
+            } catch (e) {}
+        }
+
+        const inputPesan = document.getElementById('inputPesan'), btnKirim = document.getElementById('btnKirim'), boxChat = document.getElementById('boxChat'), targetStatus = document.getElementById('targetStatus');
+
+        if (chatType === 'private') {
+            fetch('/get_messages/' + targetId).then(r => r.json()).then(data => data.forEach(tampilkanPesanPrivate));
+        } else {
+            fetch('/get_group_messages/' + targetId).then(r => r.json()).then(data => data.forEach(tampilkanPesanGrup));
+        }
+
+        btnKirim.onclick = function() {
+            if (inputPesan.value.trim() !== '') {
+                kirimPesanPayload(inputPesan.value, 'text');
+                inputPesan.value = '';
+                stopTypingEmit();
+            }
+        };
+        inputPesan.addEventListener("keypress", e => { if (e.key === "Enter") btnKirim.click(); });
+
+        function kirimPesanPayload(pesan, tipe) {
+            socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
+                sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: pesan, tipe: tipe
+            });
+        }
+
+        function kirimGambar(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => kirimPesanPayload(e.target.result, 'image');
+                reader.readAsDataURL(input.files[0]);
+                input.value = '';
+            }
+        }
+
+        function handleTyping() {
+            socket.emit(chatType === 'private' ? 'typing_private' : 'typing_group', {
+                sender_id: currentUserId, sender_name: currentUserName, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, is_typing: true
+            });
+            clearTimeout(typingTimer); typingTimer = setTimeout(stopTypingEmit, 2000);
+        }
+
+        function stopTypingEmit() {
+            socket.emit(chatType === 'private' ? 'typing_private' : 'typing_group', {
+                sender_id: currentUserId, sender_name: currentUserName, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, is_typing: false
+            });
+        }
+
+        socket.on('status_typing', data => {
+            if (chatType === 'private' && data.sender_id == targetId) targetStatus.innerText = data.is_typing ? "sedang mengetik..." : "Online";
+        });
+        socket.on('status_typing_group', data => {
+            if (chatType === 'group' && data.sender_id != currentUserId) targetStatus.innerText = data.is_typing ? `${data.sender_name} sedang mengetik...` : "Grup Chat";
+        });
+        socket.on('user_status_change', data => {
+            if (chatType === 'private' && data.user_id == targetId) targetStatus.innerText = data.status === 'online' ? "Online" : data.last_seen;
+        });
+        
+        socket.on('terima_pesan_private', data => {
+            if (chatType === 'private' && ((data.sender_id == targetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == targetId))) {
+                tampilkanPesanPrivate(data); if (data.sender_id == targetId) playSound();
+            }
+        });
+        socket.on('terima_pesan_grup', data => {
+            if (chatType === 'group' && data.group_id == targetId) {
+                tampilkanPesanGrup(data); if (data.sender_id != currentUserId) playSound();
+            }
+        });
+
+        socket.on('status_diterima', data => {
+            const el = document.getElementById('centang-' + data.message_id);
+            if (el && el.dataset.dibaca === "false") { el.innerHTML = '✓✓'; el.style.color = '#777'; }
+        });
+        socket.on('pesan_dibaca', data => {
+            if (chatType === 'private' && data.reader_id == targetId) document.querySelectorAll('.status-centang').forEach(el => { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; });
+        });
+
+        function tampilkanPesanPrivate(chat) {
+            const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
+            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+            li.innerHTML = chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : chat.pesan;
+            
+            if (isSaya) {
+                let symbol = '✓', color = '#777', isRead = "false";
+                if (chat.dibaca) { symbol = '✓✓'; color = '#34b7f1'; isRead = "true"; }
+                else if (chat.diterima) { symbol = '✓✓'; }
+                li.innerHTML += `<div class="chat-info-meta"><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
+            }
+            boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
+        }
+
+        function tampilkanPesanGrup(chat) {
+            const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
+            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+            let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
+            li.innerHTML = sender + (chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : `<span>${chat.pesan}</span>`);
+            
+            if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓✓</span></div>`;
+            
+            boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
+        }
+    </script>
+</body>
+</html>
