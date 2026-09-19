@@ -117,19 +117,21 @@
             </ul>
         </div>
 
-        <!-- KOTAK GRUP CHAT -->
+        <!-- KOTAK GRUP CHAT (TATA LETAK DIPERBAIKI: DISUSUN KE BAWAH) -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-                <form action="/create_group" method="POST" style="flex: 1; display: flex; gap: 5px; margin: 0;">
-                    <input type="text" name="nama_grup" placeholder="Nama Grup Baru..." required>
-                    <button type="submit" style="background: #075e54;">Buat</button>
-                </form>
-                <form action="/join_group" method="POST" style="flex: 1; display: flex; gap: 5px; margin: 0;">
-                    <input type="text" name="kode_grup" placeholder="Kode Grup..." required>
-                    <button type="submit" style="background: #075e54;">Gabung</button>
-                </form>
-            </div>
+            
+            <!-- Buat Grup -->
+            <form action="/create_group" method="POST" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <input type="text" name="nama_grup" placeholder="Nama Grup Baru..." required style="flex: 1;">
+                <button type="submit" style="background: #075e54;">Buat</button>
+            </form>
+
+            <!-- Gabung Grup (Dipindah ke bawah agar tidak terpotong) -->
+            <form action="/join_group" method="POST" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" name="kode_grup" placeholder="Masukkan Kode Grup..." required style="flex: 1;">
+                <button type="submit" style="background: #128c7e;">Gabung</button>
+            </form>
 
             <h4 style="margin-bottom: 10px; color: #333;">Daftar Grup:</h4>
             <ul class="contact-list">
@@ -163,7 +165,6 @@
             <ul id="boxChat"></ul>
             
             <div class="input-group">
-                <!-- Tombol Kirim Gambar -->
                 <label for="inputGambar" title="Kirim Gambar">📷</label>
                 <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
                 
@@ -176,7 +177,7 @@
 
     <script>
         const currentUserId = "{{ user_aktif.id }}";
-        let activeType = null; // 'private' or 'group'
+        let activeType = null;
         let activeTargetId = null;
         let typingTimer = null;
 
@@ -186,7 +187,6 @@
             query: { user_id: currentUserId }
         });
 
-        // Suara Notifikasi Audio (Web Audio API Beep)
         function playNotificationSound() {
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -200,7 +200,7 @@
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.15);
             } catch (e) {
-                console.log("Audio not allowed yet");
+                console.log("Audio not allowed");
             }
         }
 
@@ -210,6 +210,12 @@
         const chatFotoTeman = document.getElementById('chatFotoTeman');
         const namaTemanAktif = document.getElementById('namaTemanAktif');
         const statusKetik = document.getElementById('statusKetik');
+
+        // Real-time: Jika di-invite teman, halaman otomatis refresh dan masuk kontak
+        socket.on('kontak_baru', function(data) {
+            playNotificationSound();
+            location.reload();
+        });
 
         function bukaChat(type, targetId, targetNama, targetFoto) {
             activeType = type;
@@ -255,7 +261,6 @@
             activeTargetId = null;
         }
 
-        // Kirim Pesan Teks
         btnKirim.onclick = function() {
             const pesan = inputPesan.value;
             if (pesan.trim() !== '') {
@@ -289,7 +294,6 @@
             }
         }
 
-        // Kirim Gambar
         function kirimGambar(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
@@ -301,7 +305,6 @@
             }
         }
 
-        // Typing Indicator Events
         function handleTyping() {
             if (activeType === 'private') {
                 socket.emit('typing_private', { sender_id: currentUserId, receiver_id: activeTargetId, is_typing: true });
@@ -328,6 +331,8 @@
                 tampilkanPesanPrivate(data);
                 if (data.sender_id == activeTargetId) {
                     playNotificationSound();
+                    // Jika kita sedang membuka chat, beri tahu server bahwa pesan ini sudah dibaca
+                    fetch('/get_chat/' + activeTargetId);
                 }
             } else if (data.receiver_id == currentUserId && data.sender_id != activeTargetId) {
                 playNotificationSound();
@@ -338,26 +343,39 @@
                     badge.style.display = 'inline-block';
                 }
             }
+
+            // Jika kita sebagai penerima pesan masuk, kirim status DITERIMA ke server
+            if (data.receiver_id == currentUserId) {
+                socket.emit('pesan_diterima_client', { message_id: data.id, sender_id: data.sender_id });
+            }
         });
 
-        // Menerima Pesan Grup Real-time
+        // Update Centang Dua Abu-abu (Diterima di ponsel tujuan)
+        socket.on('status_diterima', function(data) {
+            const el = document.getElementById('centang-' + data.message_id);
+            if (el && el.dataset.dibaca === "false") {
+                el.innerHTML = '✓✓';
+                el.style.color = '#777';
+            }
+        });
+
+        // Update Centang Dua Biru (Dibaca)
+        socket.on('pesan_dibaca', function(data) {
+            if (activeType === 'private' && data.reader_id == activeTargetId) {
+                document.querySelectorAll('.status-centang').forEach(el => {
+                    el.innerHTML = '✓✓';
+                    el.style.color = '#34b7f1';
+                    el.dataset.dibaca = "true";
+                });
+            }
+        });
+
         socket.on('terima_pesan_grup', function(data) {
             if (activeType === 'group' && data.group_id == activeTargetId) {
                 tampilkanPesanGrup(data);
                 if (data.sender_id != currentUserId) {
                     playNotificationSound();
                 }
-            }
-        });
-
-        // Update Centang Dua saat Pesan Dibaca
-        socket.on('pesan_dibaca', function(data) {
-            if (activeType === 'private' && data.reader_id == activeTargetId) {
-                // Ubah status centang jadi hijau/biru dua
-                document.querySelectorAll('.status-centang').forEach(el => {
-                    el.innerHTML = '✓✓';
-                    el.style.color = '#34b7f1'; // warna centang dua terbaca ala WA
-                });
             }
         });
 
@@ -374,12 +392,23 @@
 
             const meta = document.createElement('div');
             meta.className = 'chat-info-meta';
-            let centangHtml = '';
+            
             if (isSaya) {
-                let color = chat.dibaca ? '#34b7f1' : '#777';
-                centangHtml = `<span class="status-centang" style="color: ${color}; font-weight: bold;">${chat.dibaca ? '✓✓' : '✓'}</span>`;
+                let symbol = '✓';
+                let color = '#777';
+                let isReadStr = "false";
+
+                if (chat.dibaca) {
+                    symbol = '✓✓';
+                    color = '#34b7f1';
+                    isReadStr = "true";
+                } else if (chat.diterima) {
+                    symbol = '✓✓';
+                    color = '#777';
+                }
+
+                meta.innerHTML = `<span id="centang-${chat.id}" class="status-centang" data-dibaca="${isReadStr}" style="color: ${color}; font-weight: bold;">${symbol}</span>`;
             }
-            meta.innerHTML = centangHtml;
             li.appendChild(meta);
 
             boxChat.appendChild(li);

@@ -49,9 +49,10 @@ class Message(db.Model):
     receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
     pesan = db.Column(db.Text, nullable=False)
-    tipe = db.Column(db.String(10), default='text') # 'text' or 'image'
+    tipe = db.Column(db.String(10), default='text')
     waktu = db.Column(db.DateTime, default=datetime.utcnow)
-    dibaca = db.Column(db.Boolean, default=False)
+    diterima = db.Column(db.Boolean, default=False)  # Centang 2 abu-abu
+    dibaca = db.Column(db.Boolean, default=False)    # Centang 2 biru
 
 with app.app_context():
     db.create_all()
@@ -101,7 +102,6 @@ def chat():
         session.clear()
         return redirect(url_for('login'))
     
-    # Ambil Daftar Kontak & Unread
     daftar_kontak_relasi = Contact.query.filter_by(user_id=user_sekarang_id).all()
     daftar_teman = []
     for relasi in daftar_kontak_relasi:
@@ -110,7 +110,6 @@ def chat():
             unread_count = Message.query.filter_by(sender_id=teman.id, receiver_id=user_sekarang_id, group_id=None, dibaca=False).count()
             daftar_teman.append({'user': teman, 'unread': unread_count})
 
-    # Ambil Daftar Grup
     keanggotaan = GroupMember.query.filter_by(user_id=user_sekarang_id).all()
     daftar_grup = []
     for m in keanggotaan:
@@ -148,12 +147,18 @@ def add_contact():
     if teman:
         if teman.id == user_sekarang_id:
             return "Tidak bisa menambahkan PIN sendiri!", 400
+        
         sudah_berteman = Contact.query.filter_by(user_id=user_sekarang_id, friend_id=teman.id).first()
         if sudah_berteman:
-            return "Sudah ada di kontak!", 400
+            return redirect(url_for('chat'))
+
         db.session.add(Contact(user_id=user_sekarang_id, friend_id=teman.id))
         db.session.add(Contact(user_id=teman.id, friend_id=user_sekarang_id))
         db.session.commit()
+
+        # Emit real-time ke teman agar kontak langsung masuk tanpa refresh!
+        socketio.emit('kontak_baru', {'user_id': user_sekarang_id}, room=f"user_{teman.id}")
+
         return redirect(url_for('chat'))
     else:
         return "PIN tidak ditemukan!", 404
@@ -195,13 +200,16 @@ def get_chat(friend_id):
         return jsonify([])
     user_id = session['user_id']
     
-    # Tandai pesan dibaca & beritahu pengirim via Socket
-    pesan_belum_dibaca = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, group_id=None, dibaca=False).all()
-    for p in pesan_belum_dibaca:
-        p.dibaca = True
-    db.session.commit()
-
-    if pesan_belum_dibaca:
+    # Tandai semua pesan dari teman ini menjadi Diterima dan Dibaca
+    pesan_list_db = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, group_id=None).all()
+    ada_update = False
+    for p in pesan_list_db:
+        if not p.diterima or not p.dibaca:
+            p.diterima = True
+            p.dibaca = True
+            ada_update = True
+    if ada_update:
+        db.session.commit()
         socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id}, room=f"user_{friend_id}")
 
     pesan_list = Message.query.filter(
@@ -214,6 +222,7 @@ def get_chat(friend_id):
         'sender_id': p.sender_id,
         'pesan': p.pesan,
         'tipe': p.tipe,
+        'diterima': p.diterima,
         'dibaca': p.dibaca
     } for p in pesan_list])
 
@@ -269,7 +278,8 @@ def handle_private_message(data):
             fh.write(base64.b64decode(encoded))
         pesan_teks = filename
 
-    pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe, dibaca=False)
+    # Default diterima=False, dibaca=False -> Centang 1
+    pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe, diterima=False, dibaca=False)
     db.session.add(pesan_baru)
     db.session.commit()
 
@@ -279,11 +289,22 @@ def handle_private_message(data):
         'receiver_id': receiver_id,
         'pesan': pesan_teks,
         'tipe': tipe,
+        'diterima': False,
         'dibaca': False
     }
 
     emit('terima_pesan_private', chat_data, room=f"user_{receiver_id}")
     emit('terima_pesan_private', chat_data, room=f"user_{sender_id}")
+
+@socketio.on('pesan_diterima_client')
+def handle_pesan_diterima(data):
+    msg_id = data.get('message_id')
+    sender_id = data.get('sender_id')
+    msg = Message.query.get(msg_id)
+    if msg and not msg.diterima:
+        msg.diterima = True
+        db.session.commit()
+        socketio.emit('status_diterima', {'message_id': msg_id}, room=f"user_{sender_id}")
 
 @socketio.on('kirim_pesan_grup')
 def handle_group_message(data):
