@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat-GenZ Realtime</title>
-    <!-- 1. Masukkan Pustaka Socket.io Client via CDN -->
+    <!-- Masukkan Pustaka Socket.io Client via CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
@@ -32,10 +32,12 @@
     </div>
 
     <script>
-        // 2. Hubungkan browser ke server WebSocket
-        var socket = io();
+        // Hubungkan browser ke server WebSocket dengan fallback polling yang stabil
+        var socket = io({
+            transports: ['polling', 'websocket']
+        });
 
-        // 3. Fungsi saat tombol kirim ditekan
+        // Fungsi saat tombol kirim ditekan
         function kirimPesan() {
             let input = document.getElementById('inputPesan');
             let pesanTeks = input.value.trim();
@@ -47,7 +49,7 @@
             }
         }
 
-        // 4. Tangkap pesan yang disebar dari server secara real-time
+        // Tangkap pesan yang disebar dari server secara real-time
         socket.on('terima_pesan', function(data) {
             let daftarChat = document.getElementById('boxChat');
             let itemBaru = document.createElement('li');
