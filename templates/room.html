@@ -13,16 +13,17 @@
         #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; }
         .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0; }
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0; }
-        .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; }
-        .meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; }
+        .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
+        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; }
         .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center;}
         .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-group label { font-size: 24px; cursor: pointer; padding: 0 5px; color: #128c7e; }
         .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="chat-header">
-        <button onclick="window.location.href='/chat'" style="background: none; border: none; color: white; font-size: 20px;">⬅</button>
+        <button onclick="window.location.href='/chat'" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer;">⬅</button>
         {% if tipe == 'private' %}
             <img src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
             <div>
@@ -31,26 +32,29 @@
             </div>
         {% else %}
             <img src="https://ui-avatars.com/api/?name={{ target.nama_grup }}&background=075e54&color=fff" class="foto-profil">
-            <div><h3 style="margin: 0; font-size: 16px;">{{ target.nama_grup }}</h3><span style="font-size: 12px; color: #dcf8c6;">Grup Chat</span></div>
+            <div>
+                <h3 style="margin: 0; font-size: 16px;">{{ target.nama_grup }}</h3>
+                <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">Grup Chat</span>
+            </div>
         {% endif %}
     </div>
     
     <ul id="boxChat"></ul>
     
     <div class="input-group">
-        <label for="inputGambar" style="font-size: 22px; cursor: pointer;">📷</label>
+        <label for="inputGambar">📷</label>
         <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
-        <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off">
+        <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
         <button id="btnKirim">Kirim</button>
     </div>
 
     <script>
-        const currentUserId = "{{ user_aktif.id }}", chatType = "{{ tipe }}", targetId = "{{ target.id }}";
+        const currentUserId = "{{ user_aktif.id }}", currentUserName = "{{ user_aktif.nama }}", chatType = "{{ tipe }}", targetId = "{{ target.id }}";
+        let typingTimer = null;
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
 
         const inputPesan = document.getElementById('inputPesan'), btnKirim = document.getElementById('btnKirim'), boxChat = document.getElementById('boxChat'), targetStatus = document.getElementById('targetStatus');
 
-        // Fetch Initial Messages
         fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
             .then(r => r.json()).then(data => data.forEach(chatType === 'private' ? renderPrivate : renderGroup));
 
@@ -60,9 +64,9 @@
                     sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: inputPesan.value, tipe: 'text'
                 });
                 inputPesan.value = '';
+                stopTypingEmit();
             }
         };
-        
         inputPesan.addEventListener("keypress", e => { if (e.key === "Enter") btnKirim.click(); });
 
         function kirimGambar(input) {
@@ -76,6 +80,26 @@
             }
         }
 
+        function handleTyping() {
+            socket.emit(chatType === 'private' ? 'typing_private' : 'typing_group', {
+                sender_id: currentUserId, sender_name: currentUserName, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, is_typing: true
+            });
+            clearTimeout(typingTimer); typingTimer = setTimeout(stopTypingEmit, 2000);
+        }
+
+        function stopTypingEmit() {
+            socket.emit(chatType === 'private' ? 'typing_private' : 'typing_group', {
+                sender_id: currentUserId, sender_name: currentUserName, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, is_typing: false
+            });
+        }
+
+        socket.on('status_typing', data => {
+            if (chatType === 'private' && data.sender_id == targetId) targetStatus.innerText = data.is_typing ? "sedang mengetik..." : "Online";
+        });
+        socket.on('status_typing_group', data => {
+            if (chatType === 'group' && data.sender_id != currentUserId) targetStatus.innerText = data.is_typing ? `${data.sender_name} sedang mengetik...` : "Grup Chat";
+        });
+
         socket.on('user_status_change', data => {
             if (chatType === 'private' && data.user_id == targetId) targetStatus.innerText = data.status === 'online' ? "Online" : data.last_seen;
         });
@@ -83,18 +107,16 @@
         socket.on('terima_pesan_private', data => {
             if ((data.sender_id == targetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == targetId)) {
                 renderPrivate(data);
-                // Jika saya menerima pesan saat membuka room ini, kirim sinyal TERBACA
-                if (data.sender_id == targetId) {
-                    socket.emit('pesan_terbaca_langsung', { message_id: data.id });
-                }
+                // Langsung ngirim notif balik kalau kita yang menerima saat di room
+                if (data.sender_id == targetId) socket.emit('pesan_terbaca_langsung', { message_id: data.id });
             }
         });
 
         socket.on('terima_pesan_grup', data => {
-            if (data.group_id == targetId) { renderGroup(data); }
+            if (data.group_id == targetId) renderGroup(data);
         });
 
-        // Update centang (real-time)
+        // 100% Real-time Centang Updates
         socket.on('status_diterima', data => {
             const el = document.getElementById('centang-' + data.message_id);
             if (el && el.dataset.dibaca === "false") { el.innerHTML = '✓✓'; el.style.color = '#777'; }
@@ -102,12 +124,10 @@
 
         socket.on('pesan_dibaca', data => {
             if (data.reader_id == targetId) {
-                // Jika ada spesifik pesan
                 if(data.message_id) {
                     const el = document.getElementById('centang-' + data.message_id);
                     if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; }
                 } else {
-                    // Update semua
                     document.querySelectorAll('.status-centang').forEach(el => { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; });
                 }
             }
@@ -116,13 +136,13 @@
         function renderPrivate(chat) {
             const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
-            li.innerHTML = chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image">` : chat.pesan;
+            li.innerHTML = chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : chat.pesan;
             
             if (isSaya) {
                 let symbol = '✓', color = '#777', isRead = "false";
                 if (chat.dibaca) { symbol = '✓✓'; color = '#34b7f1'; isRead = "true"; }
                 else if (chat.diterima) { symbol = '✓✓'; }
-                li.innerHTML += `<div class="meta"><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
+                li.innerHTML += `<div class="chat-info-meta"><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
             }
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
@@ -130,9 +150,11 @@
         function renderGroup(chat) {
             const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
-            let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54;">~ ${chat.sender_name}</div>` : '';
-            li.innerHTML = sender + (chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image">` : `<span>${chat.pesan}</span>`);
-            if (isSaya) li.innerHTML += `<div class="meta"><span style="color: #777; font-weight: bold;">✓✓</span></div>`;
+            let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
+            li.innerHTML = sender + (chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : `<span>${chat.pesan}</span>`);
+            
+            // Centang Grup selalu Centang 2 Abu (standar WhatsApp/Telegram Grup)
+            if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓✓</span></div>`;
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
     </script>

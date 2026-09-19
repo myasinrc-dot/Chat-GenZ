@@ -13,12 +13,22 @@
         .header a { color: #fff; text-decoration: underline; margin-left: 15px; font-weight: bold; font-size: 14px; cursor: pointer; }
         .container { max-width: 600px; margin: 20px auto; padding: 0 10px; }
         .box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .box form { display: flex; gap: 10px; margin-bottom: 10px; }
+        .box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .box button { padding: 10px 15px; background: #128c7e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
         .contact-list { list-style: none; padding: 0; margin: 0; }
-        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; }
+        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; transition: 0.2s; position: relative; }
         .contact-list li:hover { background: #f0f0f0; }
         .contact-info { display: flex; flex-direction: column; flex: 1; }
         .contact-name { font-weight: bold; color: #333; font-size: 16px; }
+        
         .badge-notif { background-color: #25d366; color: white; border-radius: 50%; padding: 3px 8px; font-size: 12px; font-weight: bold; text-align: center; display: inline-block; }
+
+        #modalProfil { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center; }
+        .modal-content input { margin-bottom: 15px; width: 100%; box-sizing: border-box; }
+        .btn-tutup { background: #ccc !important; color: #333 !important; }
     </style>
 </head>
 <body>
@@ -30,13 +40,38 @@
                 <span style="font-size: 12px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</span>
             </div>
         </div>
-        <div><a href="/logout">Logout</a></div>
+        <div>
+            <a onclick="document.getElementById('modalProfil').style.display='flex'">Edit Profil</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <!-- Modal Profil Dikembalikan -->
+    <div id="modalProfil">
+        <div class="modal-content">
+            <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
+            <form action="/update_profile" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; text-align: left;">
+                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Nama Tampilan:</label>
+                <input type="text" name="nama" value="{{ user_aktif.nama }}" required style="padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Foto Profil Baru:</label>
+                <input type="file" name="foto" accept="image/*" style="padding: 10px; border: 1px dashed #ccc;">
+                <button type="submit" style="padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold;">Simpan</button>
+                <button type="button" class="btn-tutup" onclick="document.getElementById('modalProfil').style.display='none'" style="padding: 10px; margin-top: 10px; border: none; border-radius: 4px; font-weight: bold;">Batal</button>
+            </form>
+        </div>
     </div>
 
     <div class="container">
-        <!-- Private Chats -->
+        
+        <!-- Box Kontak dan Fitur Add Teman Dikembalikan -->
         <div class="box">
-            <h4 style="margin: 0 0 10px 0; color: #333;">Kontak (Private Chat)</h4>
+            <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
+            <form action="/add_contact" method="POST">
+                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman..." required autocomplete="off">
+                <button type="submit">Invite</button>
+            </form>
+            
+            <h4 style="margin: 20px 0 10px 0; color: #333;">Kontak (Private Chat)</h4>
             <ul class="contact-list">
                 {% for item in daftar_teman %}
                     <li onclick="window.location.href='/room/private/{{ item.user.id }}'">
@@ -53,9 +88,19 @@
             </ul>
         </div>
 
-        <!-- Group Chats -->
+        <!-- Box Grup Chat dan Fitur Buat/Gabung Grup Dikembalikan -->
         <div class="box">
-            <h4 style="margin: 0 0 10px 0; color: #333;">Grup Chat</h4>
+            <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
+            <form action="/create_group" method="POST">
+                <input type="text" name="nama_grup" placeholder="Nama Grup Baru..." required>
+                <button type="submit" style="background: #075e54;">Buat</button>
+            </form>
+            <form action="/join_group" method="POST">
+                <input type="text" name="kode_grup" placeholder="Masukkan Kode Grup..." required>
+                <button type="submit" style="background: #128c7e;">Gabung</button>
+            </form>
+
+            <h4 style="margin: 20px 0 10px 0; color: #333;">Daftar Grup</h4>
             <ul class="contact-list">
                 {% for item in daftar_grup %}
                     <li onclick="window.location.href='/room/group/{{ item.group.id }}'">
@@ -75,6 +120,17 @@
         const currentUserId = "{{ user_aktif.id }}";
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
 
+        function playSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(); osc.stop(ctx.currentTime + 0.15);
+            } catch (e) {}
+        }
+
         socket.on('user_status_change', data => {
             const el = document.getElementById('status-text-' + data.user_id);
             if (el) {
@@ -84,11 +140,14 @@
             }
         });
 
+        socket.on('kontak_baru', data => { playSound(); location.reload(); });
+
         socket.on('notif_pesan_baru', data => {
             const badge = document.getElementById('badge-private-' + data.sender_id);
             if(badge) {
                 badge.style.display = 'inline-block';
                 badge.innerText = parseInt(badge.innerText || 0) + 1;
+                playSound();
             }
         });
 
@@ -98,19 +157,9 @@
                 if(badge) {
                     badge.style.display = 'inline-block';
                     badge.innerText = parseInt(badge.innerText || 0) + 1;
+                    playSound();
                 }
             }
-        });
-
-        // Reset badge saat dari ruang chat kembali ke dashboard
-        socket.on('reset_badge', data => {
-            const badge = document.getElementById('badge-private-' + data.target_id);
-            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
-        });
-
-        socket.on('reset_badge_group', data => {
-            const badge = document.getElementById('badge-group-' + data.group_id);
-            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
         });
     </script>
 </body>

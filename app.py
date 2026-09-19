@@ -18,9 +18,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chatgenz.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+# Buffer besar agar foto tidak gagal kirim & ping_timeout agar koneksi stabil
 socketio = SocketIO(app, async_mode='eventlet', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=60)
 
-# Gunakan dict untuk melacak jumlah tab aktif per user agar tidak on-off
+# Tracker untuk mencatat user yang sedang online
 user_connections = {}
 
 def get_waktu_wita():
@@ -118,16 +119,16 @@ def room_private(friend_id):
     teman = User.query.get(friend_id)
     if not teman: return redirect(url_for('chat'))
     
-    # Tandai terbaca saat masuk room
+    # Tandai semua pesan masuk menjadi dibaca saat room dibuka
     unread_msgs = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, group_id=None, dibaca=False).all()
     if unread_msgs:
         for p in unread_msgs:
             p.diterima = True
             p.dibaca = True
         db.session.commit()
+        # Beri tau si pengirim bahwa pesannya sudah kita baca
         socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id}, room=f"user_{friend_id}")
-        socketio.emit('reset_badge', {'target_id': friend_id}, room=f"user_{user_id}")
-
+        
     is_online = user_connections.get(friend_id, 0) > 0
     last_seen = "Online" if is_online else (teman.last_seen.strftime("%d/%m/%Y %H:%M") if teman.last_seen else "")
     return render_template('room.html', user_aktif=User.query.get(user_id), target=teman, tipe='private', is_online=is_online, last_seen_str=last_seen)
@@ -144,7 +145,6 @@ def room_group(group_id):
     if last_msg:
         member.last_read_id = last_msg.id
         db.session.commit()
-        socketio.emit('reset_badge_group', {'group_id': group_id}, room=f"user_{user_id}")
 
     return render_template('room.html', user_aktif=User.query.get(user_id), target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
 
@@ -162,6 +162,65 @@ def get_group_messages(group_id):
     pesan_list = Message.query.filter_by(group_id=group_id).order_by(Message.waktu.asc()).all()
     return jsonify([{'id': p.id, 'sender_id': p.sender_id, 'sender_name': User.query.get(p.sender_id).nama, 'pesan': p.pesan, 'tipe': p.tipe} for p in pesan_list])
 
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    user = User.query.get(session['user_id'])
+    nama_baru = request.form.get('nama')
+    foto = request.files.get('foto')
+    if nama_baru: user.nama = nama_baru
+    if foto and foto.filename != '':
+        filename = secure_filename(foto.filename)
+        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'jpg'
+        new_filename = f"user_{user.id}_{int(datetime.utcnow().timestamp())}.{ext}"
+        foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
+        user.foto_profil = new_filename
+    db.session.commit()
+    return redirect(url_for('chat'))
+
+@app.route('/add_contact', methods=['POST'])
+def add_contact():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    pin_teman = request.form.get('pin_teman')
+    user_id = session['user_id']
+    teman = User.query.filter_by(pin=pin_teman).first()
+    if teman and teman.id != user_id:
+        if not Contact.query.filter_by(user_id=user_id, friend_id=teman.id).first():
+            db.session.add(Contact(user_id=user_id, friend_id=teman.id))
+            db.session.add(Contact(user_id=teman.id, friend_id=user_id))
+            db.session.commit()
+            socketio.emit('kontak_baru', {'user_id': user_id}, room=f"user_{teman.id}")
+    return redirect(url_for('chat'))
+
+@app.route('/create_group', methods=['POST'])
+def create_group():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    nama_grup = request.form.get('nama_grup')
+    user_id = session['user_id']
+    if nama_grup:
+        grup_baru = Group(nama_grup=nama_grup, kode_grup=generate_pin(8, True), creator_id=user_id)
+        db.session.add(grup_baru)
+        db.session.commit()
+        db.session.add(GroupMember(group_id=grup_baru.id, user_id=user_id))
+        db.session.commit()
+    return redirect(url_for('chat'))
+
+@app.route('/join_group', methods=['POST'])
+def join_group():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    kode_grup = request.form.get('kode_grup')
+    user_id = session['user_id']
+    grup = Group.query.filter_by(kode_grup=kode_grup).first()
+    if grup and not GroupMember.query.filter_by(group_id=grup.id, user_id=user_id).first():
+        db.session.add(GroupMember(group_id=grup.id, user_id=user_id))
+        db.session.commit()
+    return redirect(url_for('chat'))
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
 @socketio.on('connect')
 def handle_connect():
     u_id = request.args.get('user_id')
@@ -177,11 +236,13 @@ def handle_connect():
                 db.session.commit()
             socketio.emit('user_status_change', {'user_id': u_id, 'status': 'online'})
             
+        # Ketika user online (internet nyala lagi), langsung set pesan yang belum diterima jadi diterima
         pending_msgs = Message.query.filter_by(receiver_id=u_id, diterima=False).all()
-        for msg in pending_msgs:
-            msg.diterima = True
-            socketio.emit('status_diterima', {'message_id': msg.id}, room=f"user_{msg.sender_id}")
-        db.session.commit()
+        if pending_msgs:
+            for msg in pending_msgs:
+                msg.diterima = True
+                socketio.emit('status_diterima', {'message_id': msg.id}, room=f"user_{msg.sender_id}")
+            db.session.commit()
 
         for m in GroupMember.query.filter_by(user_id=u_id).all():
             join_room(f"group_{m.group_id}")
@@ -219,14 +280,12 @@ def handle_private_message(data):
     
     chat_data = {'id': pesan_baru.id, 'sender_id': sender_id, 'receiver_id': receiver_id, 'pesan': pesan_teks, 'tipe': tipe, 'diterima': is_online, 'dibaca': False}
     
-    # Broadcast ke pengirim dan penerima tanpa refresh
     emit('terima_pesan_private', chat_data, room=f"user_{sender_id}")
     emit('terima_pesan_private', chat_data, room=f"user_{receiver_id}")
     emit('notif_pesan_baru', {'sender_id': sender_id}, room=f"user_{receiver_id}")
 
 @socketio.on('pesan_terbaca_langsung')
 def handle_read(data):
-    # Mengubah status pesan langsung jadi Centang 2 Biru jika room terbuka
     msg_id = data['message_id']
     msg = Message.query.get(msg_id)
     if msg:
@@ -239,7 +298,6 @@ def handle_read(data):
 def handle_group_message(data):
     sender_id, group_id, pesan_teks, tipe = int(data['sender_id']), int(data['group_id']), data['pesan'], data.get('tipe', 'text')
     
-    # Simpan Gambar
     if tipe == 'image' and 'base64,' in pesan_teks:
         header, encoded = pesan_teks.split("base64,", 1)
         ext = header.split('/')[1].split(';')[0] if 'image/' in header else 'jpg'
@@ -250,11 +308,8 @@ def handle_group_message(data):
     pesan_baru = Message(sender_id=sender_id, group_id=group_id, pesan=pesan_teks, tipe=tipe)
     db.session.add(pesan_baru)
     
-    # Auto-update last_read_id si pengirim agar dia tidak dapat notif angka untuk pesannya sendiri
     m = GroupMember.query.filter_by(group_id=group_id, user_id=sender_id).first()
-    if m:
-        m.last_read_id = pesan_baru.id
-        
+    if m: m.last_read_id = pesan_baru.id
     db.session.commit()
 
     sender = User.query.get(sender_id)
@@ -262,6 +317,14 @@ def handle_group_message(data):
     
     emit('terima_pesan_grup', chat_data, room=f"group_{group_id}")
     emit('notif_grup_baru', {'group_id': group_id, 'sender_id': sender_id}, room=f"group_{group_id}")
+
+@socketio.on('typing_private')
+def handle_typing_private(data):
+    emit('status_typing', {'sender_id': data['sender_id'], 'is_typing': data['is_typing']}, room=f"user_{data['receiver_id']}")
+
+@socketio.on('typing_group')
+def handle_typing_group(data):
+    emit('status_typing_group', {'sender_id': data['sender_id'], 'sender_name': data['sender_name'], 'is_typing': data['is_typing']}, room=f"group_{data['group_id']}")
 
 if __name__ == '__main__':
     socketio.run(app, host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
