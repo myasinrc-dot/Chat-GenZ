@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat-GenZ Realtime</title>
+    <!-- 1. Masukkan Pustaka Socket.io Client via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
+        #chat-container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
+        #boxChat { list-style-type: none; padding: 0; height: 300px; overflow-y: scroll; border: 1px solid #ddd; margin-bottom: 15px; padding: 10px; border-radius: 5px; background: #fafafa; }
+        #boxChat li { padding: 8px; margin-bottom: 5px; background: #e2f0cb; border-radius: 4px; }
+        .input-group { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+
+    <div id="chat-container">
+        <h2>Chat-GenZ Room</h2>
+        <!-- Tempat daftar pesan muncul -->
+        <ul id="boxChat"></ul>
+
+        <!-- Form untuk kirim pesan -->
+        <div class="input-group">
+            <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off">
+            <button onclick="kirimPesan()">Kirim</button>
+        </div>
+    </div>
+
+    <script>
+        // 2. Hubungkan browser ke server WebSocket
+        var socket = io();
+
+        // 3. Fungsi saat tombol kirim ditekan
+        function kirimPesan() {
+            let input = document.getElementById('inputPesan');
+            let pesanTeks = input.value.trim();
+            
+            if (pesanTeks !== "") {
+                // Kirim data ke backend Flask dengan event 'kirim_pesan'
+                socket.emit('kirim_pesan', { pesan: pesanTeks });
+                input.value = ''; // Kosongkan kolom input
+            }
+        }
+
+        // 4. Tangkap pesan yang disebar dari server secara real-time
+        socket.on('terima_pesan', function(data) {
+            let daftarChat = document.getElementById('boxChat');
+            let itemBaru = document.createElement('li');
+            itemBaru.textContent = data.pesan;
+            daftarChat.appendChild(itemBaru);
+            
+            // Auto scroll ke bawah agar pesan terbaru selalu terlihat
+            daftarChat.scrollTop = daftarChat.scrollHeight;
+        });
+    </script>
+
+</body>
+</html>
