@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat-GenZ</title>
+    <title>Chat-GenZ Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; background: #e5ddd5; }
@@ -26,19 +26,22 @@
         .contact-name { font-weight: bold; color: #333; font-size: 16px; }
         .contact-pin { color: #888; font-size: 13px; }
 
-        /* Badge Notifikasi Angka */
         .badge-notif { background-color: #25d366; color: white; border-radius: 50%; padding: 3px 8px; font-size: 12px; font-weight: bold; text-align: center; min-width: 12px; display: inline-block; }
 
         .chat-box { background: #efeae2; padding: 0; border-radius: 8px; border: 1px solid #ccc; overflow: hidden; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .chat-header { background: #075e54; color: white; padding: 10px 15px; margin: 0; display: flex; align-items: center; gap: 15px; }
+        .chat-header { background: #075e54; color: white; padding: 10px 15px; margin: 0; display: flex; align-items: center; justify-content: space-between; }
         
         #boxChat { list-style-type: none; padding: 15px; height: 350px; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
-        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; display: table; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; display: table; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); position: relative; word-break: break-word; }
         .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0 !important; }
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0 !important; }
+        
+        .chat-image { max-width: 200px; max-height: 200px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
+        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 3px; }
 
-        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; }
-        .input-group input { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; align-items: center; }
+        .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-group label { cursor: pointer; font-size: 20px; padding: 5px; color: #128c7e; }
         .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
         #modalProfil { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
@@ -68,18 +71,16 @@
         </div>
     </div>
 
+    <!-- MODAL EDIT PROFIL -->
     <div id="modalProfil">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
             <form action="/update_profile" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; text-align: left;">
-                
                 <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Nama Tampilan:</label>
                 <input type="text" name="nama" value="{{ user_aktif.nama }}" required style="padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
-                
-                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Foto Profil Baru (Opsional):</label>
+                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Foto Profil Baru:</label>
                 <input type="file" name="foto" accept="image/*" style="padding: 10px; border: 1px dashed #ccc;">
-                
-                <button type="submit" style="padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Simpan Perubahan</button>
+                <button type="submit" style="padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Simpan</button>
                 <button type="button" class="btn-tutup" onclick="document.getElementById('modalProfil').style.display='none'" style="padding: 10px; margin-top: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Batal</button>
             </form>
         </div>
@@ -87,6 +88,7 @@
 
     <div class="container">
         
+        <!-- KOTAK KONTAK / PRIVATE CHAT -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
             <form action="/add_contact" method="POST">
@@ -94,42 +96,78 @@
                 <button type="submit">Invite</button>
             </form>
             
-            <h4 style="margin-bottom: 10px; color: #333; margin-top: 25px;">Daftar Kontak (Klik untuk Chat):</h4>
+            <h4 style="margin-bottom: 10px; color: #333; margin-top: 20px;">Daftar Kontak:</h4>
             <ul class="contact-list">
                 {% for item in daftar_teman %}
-                    <li onclick="bukaChat('{{ item.user.id }}', '{{ item.user.nama }}', '{{ item.user.foto_profil }}')">
-                        
+                    <li onclick="bukaChat('private', '{{ item.user.id }}', '{{ item.user.nama }}', '{{ item.user.foto_profil }}')">
                         {% if item.user.foto_profil == 'default.png' %}
                             <img src="https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random" class="foto-profil" alt="Foto">
                         {% else %}
                             <img src="{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}" class="foto-profil" alt="Foto">
                         {% endif %}
-                        
                         <div class="contact-info">
                             <span class="contact-name">{{ item.user.nama }}</span>
                             <span class="contact-pin">PIN: {{ item.user.pin }}</span>
                         </div>
-
-                        <!-- BADGE NOTIFIKASI ANGKA -->
-                        <span id="badge-{{ item.user.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">
-                            {{ item.unread }}
-                        </span>
+                        <span id="badge-private-{{ item.user.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">{{ item.unread }}</span>
                     </li>
                 {% else %}
-                    <li style="color: gray; font-style: italic; cursor: default; justify-content: center;">Belum ada kontak. Invite PIN di atas!</li>
+                    <li style="color: gray; font-style: italic; cursor: default; justify-content: center;">Belum ada kontak.</li>
                 {% endfor %}
             </ul>
         </div>
 
+        <!-- KOTAK GRUP CHAT -->
+        <div class="box">
+            <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <form action="/create_group" method="POST" style="flex: 1; display: flex; gap: 5px; margin: 0;">
+                    <input type="text" name="nama_grup" placeholder="Nama Grup Baru..." required>
+                    <button type="submit" style="background: #075e54;">Buat</button>
+                </form>
+                <form action="/join_group" method="POST" style="flex: 1; display: flex; gap: 5px; margin: 0;">
+                    <input type="text" name="kode_grup" placeholder="Kode Grup..." required>
+                    <button type="submit" style="background: #075e54;">Gabung</button>
+                </form>
+            </div>
+
+            <h4 style="margin-bottom: 10px; color: #333;">Daftar Grup:</h4>
+            <ul class="contact-list">
+                {% for item in daftar_grup %}
+                    <li onclick="bukaChat('group', '{{ item.group.id }}', '{{ item.group.nama_grup }}', 'default.png')">
+                        <img src="https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff" class="foto-profil" alt="Grup">
+                        <div class="contact-info">
+                            <span class="contact-name">{{ item.group.nama_grup }}</span>
+                            <span class="contact-pin">Kode: {{ item.group.kode_grup }}</span>
+                        </div>
+                    </li>
+                {% else %}
+                    <li style="color: gray; font-style: italic; cursor: default; justify-content: center;">Belum bergabung dengan grup.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- RUANG CHAT -->
         <div class="chat-box" id="chatArea">
             <div class="chat-header">
-                <img id="chatFotoTeman" src="" class="foto-profil" style="display: none;" alt="Foto">
-                <h3 id="namaTemanAktif" style="margin: 0;">Pilih kontak untuk chat</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img id="chatFotoTeman" src="" class="foto-profil" style="display: none;" alt="Foto">
+                    <div>
+                        <h3 id="namaTemanAktif" style="margin: 0; font-size: 16px;">Pilih chat</h3>
+                        <span id="statusKetik" style="font-size: 12px; color: #dcf8c6; display: none;">sedang mengetik...</span>
+                    </div>
+                </div>
+                <button onclick="tutupChat()" style="background: none; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 16px;">✖ Tutup</button>
             </div>
+            
             <ul id="boxChat"></ul>
             
             <div class="input-group">
-                <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off">
+                <!-- Tombol Kirim Gambar -->
+                <label for="inputGambar" title="Kirim Gambar">📷</label>
+                <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
+                
+                <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
                 <button id="btnKirim">Kirim</button>
             </div>
         </div>
@@ -138,7 +176,9 @@
 
     <script>
         const currentUserId = "{{ user_aktif.id }}";
-        let activeFriendId = null;
+        let activeType = null; // 'private' or 'group'
+        let activeTargetId = null;
+        let typingTimer = null;
 
         var socket = io({ 
             path: '/socket.io', 
@@ -146,79 +186,219 @@
             query: { user_id: currentUserId }
         });
 
+        // Suara Notifikasi Audio (Web Audio API Beep)
+        function playNotificationSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.15);
+            } catch (e) {
+                console.log("Audio not allowed yet");
+            }
+        }
+
         const inputPesan = document.getElementById('inputPesan');
         const btnKirim = document.getElementById('btnKirim');
         const boxChat = document.getElementById('boxChat');
         const chatFotoTeman = document.getElementById('chatFotoTeman');
         const namaTemanAktif = document.getElementById('namaTemanAktif');
+        const statusKetik = document.getElementById('statusKetik');
 
-        function bukaChat(friendId, friendNama, friendFoto) {
-            activeFriendId = friendId;
-            namaTemanAktif.innerText = friendNama;
+        function bukaChat(type, targetId, targetNama, targetFoto) {
+            activeType = type;
+            activeTargetId = targetId;
+            namaTemanAktif.innerText = targetNama;
+            statusKetik.style.display = 'none';
             
             chatFotoTeman.style.display = 'block';
-            if(friendFoto === 'default.png') {
-                chatFotoTeman.src = "https://ui-avatars.com/api/?name=" + friendNama + "&background=random";
+            if(targetFoto === 'default.png') {
+                chatFotoTeman.src = "https://ui-avatars.com/api/?name=" + targetNama + "&background=" + (type==='group'?'075e54':'random');
             } else {
-                chatFotoTeman.src = "/static/uploads/" + friendFoto;
+                chatFotoTeman.src = "/static/uploads/" + targetFoto;
             }
 
             document.getElementById('chatArea').style.display = 'block';
             boxChat.innerHTML = '';
 
-            // Hilangkan badge notifikasi saat chat dibuka
-            const badge = document.getElementById('badge-' + friendId);
-            if (badge) {
-                badge.style.display = 'none';
-                badge.innerText = '0';
-            }
+            if (type === 'private') {
+                const badge = document.getElementById('badge-private-' + targetId);
+                if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
 
-            fetch('/get_chat/' + friendId)
-                .then(res => res.json())
-                .then(data => {
-                    data.forEach(chat => {
-                        tampilkanPesan(chat.pesan, chat.sender_id == currentUserId);
+                fetch('/get_chat/' + targetId)
+                    .then(res => res.json())
+                    .then(data => {
+                        data.forEach(chat => {
+                            tampilkanPesanPrivate(chat);
+                        });
                     });
-                });
+            } else if (type === 'group') {
+                fetch('/get_group_chat/' + targetId)
+                    .then(res => res.json())
+                    .then(data => {
+                        data.forEach(chat => {
+                            tampilkanPesanGrup(chat);
+                        });
+                    });
+            }
         }
 
+        function tutupChat() {
+            document.getElementById('chatArea').style.display = 'none';
+            activeType = null;
+            activeTargetId = null;
+        }
+
+        // Kirim Pesan Teks
         btnKirim.onclick = function() {
-            if (!activeFriendId) return;
             const pesan = inputPesan.value;
             if (pesan.trim() !== '') {
-                socket.emit('kirim_pesan_private', {
-                    sender_id: currentUserId,
-                    receiver_id: activeFriendId,
-                    pesan: pesan
-                });
+                kirimPesanPayload(pesan, 'text');
                 inputPesan.value = '';
+                stopTypingEmit();
             }
         };
 
-        socket.on('terima_pesan_private', function(data) {
-            // Jika pesan masuk untuk chat yang sedang aktif dibuka
-            if ((data.sender_id == activeFriendId && data.receiver_id == currentUserId) || 
-                (data.sender_id == currentUserId && data.receiver_id == activeFriendId)) {
-                tampilkanPesan(data.pesan, data.sender_id == currentUserId);
+        inputPesan.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                btnKirim.click();
             }
-            
-            // Jika pesan masuk dari pengirim lain yang sedang TIDAK dibuka chatnya
-            if (data.receiver_id == currentUserId && data.sender_id != activeFriendId) {
-                const badge = document.getElementById('badge-' + data.sender_id);
+        });
+
+        function kirimPesanPayload(pesan, tipe) {
+            if (activeType === 'private') {
+                socket.emit('kirim_pesan_private', {
+                    sender_id: currentUserId,
+                    receiver_id: activeTargetId,
+                    pesan: pesan,
+                    tipe: tipe
+                });
+            } else if (activeType === 'group') {
+                socket.emit('kirim_pesan_grup', {
+                    sender_id: currentUserId,
+                    group_id: activeTargetId,
+                    pesan: pesan,
+                    tipe: tipe
+                });
+            }
+        }
+
+        // Kirim Gambar
+        function kirimGambar(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    kirimPesanPayload(e.target.result, 'image');
+                };
+                reader.readAsDataURL(input.files[0]);
+                input.value = '';
+            }
+        }
+
+        // Typing Indicator Events
+        function handleTyping() {
+            if (activeType === 'private') {
+                socket.emit('typing_private', { sender_id: currentUserId, receiver_id: activeTargetId, is_typing: true });
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(stopTypingEmit, 2000);
+            }
+        }
+
+        function stopTypingEmit() {
+            if (activeType === 'private') {
+                socket.emit('typing_private', { sender_id: currentUserId, receiver_id: activeTargetId, is_typing: false });
+            }
+        }
+
+        socket.on('status_typing', function(data) {
+            if (activeType === 'private' && data.sender_id == activeTargetId) {
+                statusKetik.style.display = data.is_typing ? 'block' : 'none';
+            }
+        });
+
+        // Menerima Pesan Private Real-time
+        socket.on('terima_pesan_private', function(data) {
+            if (activeType === 'private' && ((data.sender_id == activeTargetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == activeTargetId))) {
+                tampilkanPesanPrivate(data);
+                if (data.sender_id == activeTargetId) {
+                    playNotificationSound();
+                }
+            } else if (data.receiver_id == currentUserId && data.sender_id != activeTargetId) {
+                playNotificationSound();
+                const badge = document.getElementById('badge-private-' + data.sender_id);
                 if (badge) {
-                    let currentCount = parseInt(badge.innerText) || 0;
-                    badge.innerText = currentCount + 1;
+                    let count = parseInt(badge.innerText) || 0;
+                    badge.innerText = count + 1;
                     badge.style.display = 'inline-block';
                 }
             }
         });
 
-        function tampilkanPesan(pesan, isSaya) {
+        // Menerima Pesan Grup Real-time
+        socket.on('terima_pesan_grup', function(data) {
+            if (activeType === 'group' && data.group_id == activeTargetId) {
+                tampilkanPesanGrup(data);
+                if (data.sender_id != currentUserId) {
+                    playNotificationSound();
+                }
+            }
+        });
+
+        // Update Centang Dua saat Pesan Dibaca
+        socket.on('pesan_dibaca', function(data) {
+            if (activeType === 'private' && data.reader_id == activeTargetId) {
+                // Ubah status centang jadi hijau/biru dua
+                document.querySelectorAll('.status-centang').forEach(el => {
+                    el.innerHTML = '✓✓';
+                    el.style.color = '#34b7f1'; // warna centang dua terbaca ala WA
+                });
+            }
+        });
+
+        function tampilkanPesanPrivate(chat) {
             const li = document.createElement('li');
-            li.textContent = pesan;
-            if (isSaya) li.classList.add('chat-saya');
-            else li.classList.add('chat-teman');
-            
+            const isSaya = (chat.sender_id == currentUserId);
+            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+
+            if (chat.tipe === 'image') {
+                li.innerHTML = `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+            } else {
+                li.textContent = chat.pesan;
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'chat-info-meta';
+            let centangHtml = '';
+            if (isSaya) {
+                let color = chat.dibaca ? '#34b7f1' : '#777';
+                centangHtml = `<span class="status-centang" style="color: ${color}; font-weight: bold;">${chat.dibaca ? '✓✓' : '✓'}</span>`;
+            }
+            meta.innerHTML = centangHtml;
+            li.appendChild(meta);
+
+            boxChat.appendChild(li);
+            boxChat.scrollTop = boxChat.scrollHeight;
+        }
+
+        function tampilkanPesanGrup(chat) {
+            const li = document.createElement('li');
+            const isSaya = (chat.sender_id == currentUserId);
+            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+
+            let senderLabel = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
+
+            if (chat.tipe === 'image') {
+                li.innerHTML = senderLabel + `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+            } else {
+                li.innerHTML = senderLabel + `<span>${chat.pesan}</span>`;
+            }
+
             boxChat.appendChild(li);
             boxChat.scrollTop = boxChat.scrollHeight;
         }
