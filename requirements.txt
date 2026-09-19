@@ -2,4 +2,5 @@ Flask
 Flask-SocketIO
 eventlet
 gunicorn
+Flask-SQLAlchemy
 

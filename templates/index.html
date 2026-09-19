@@ -3,74 +3,209 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat-GenZ Realtime</title>
+    <title>Chat-GenZ</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-        #chat-container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
-        #boxChat { list-style-type: none; padding: 0; height: 300px; overflow-y: scroll; border: 1px solid #ddd; padding: 10px; border-radius: 4px; margin-bottom: 10px; background: #fafafa; }
-        #boxChat li { padding: 8px; margin-bottom: 5px; background: #e2f0cb; border-radius: 4px; word-wrap: break-word; }
-        .input-group { display: flex; gap: 10px; }
-        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #45a049; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #e5ddd5; }
+        .header { background-color: #075e54; color: white; padding: 10px 15px; display: flex; align-items: center; justify-content: space-between; }
+        .header-profile { display: flex; align-items: center; gap: 10px; }
+        .foto-profil { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
+        .header a { color: #fff; text-decoration: underline; margin-left: 15px; font-weight: bold; font-size: 14px; cursor: pointer; }
+        
+        .container { max-width: 600px; margin: 20px auto; padding: 0 10px; }
+        
+        .box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .box form { display: flex; gap: 10px; margin-bottom: 10px; }
+        .box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .box button { padding: 10px 15px; background: #128c7e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
+        .contact-list { list-style: none; padding: 0; margin: 0; }
+        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .contact-list li:hover { background: #f0f0f0; }
+        .contact-info { display: flex; flex-direction: column; }
+        .contact-name { font-weight: bold; color: #333; font-size: 16px; }
+        .contact-pin { color: #888; font-size: 13px; }
+
+        .chat-box { background: #efeae2; padding: 0; border-radius: 8px; border: 1px solid #ccc; overflow: hidden; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chat-header { background: #075e54; color: white; padding: 10px 15px; margin: 0; display: flex; align-items: center; gap: 15px; }
+        
+        #boxChat { list-style-type: none; padding: 15px; height: 350px; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
+        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; display: table; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0 !important; }
+        .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0 !important; }
+
+        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; }
+        .input-group input { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
+
+        /* Gaya Pop-up Modal Profil */
+        #modalProfil { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center; }
+        .modal-content input { margin-bottom: 15px; width: 100%; box-sizing: border-box; }
+        .btn-tutup { background: #ccc !important; color: #333 !important; }
     </style>
 </head>
 <body>
 
-    <div id="chat-container">
-        <h2>Chat-GenZ Room</h2>
-        <ul id="boxChat"></ul>
-        
-        <div class="input-group">
-            <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off">
-            <button id="btnKirim">Kirim</button>
+    <!-- NAVIGASI ATAS (Foto, Nama, PIN) -->
+    <div class="header">
+        <div class="header-profile">
+            {% if user_aktif.foto_profil == 'default.png' %}
+                <img src="https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random" class="foto-profil" alt="Foto">
+            {% else %}
+                <img src="{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}" class="foto-profil" alt="Foto">
+            {% endif %}
+            
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-weight: bold; font-size: 16px;">{{ user_aktif.nama }}</span>
+                <span style="font-size: 12px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</span>
+            </div>
+        </div>
+        <div>
+            <a onclick="document.getElementById('modalProfil').style.display='flex'">Edit Profil</a>
+            <a href="/logout">Logout</a>
         </div>
     </div>
 
+    <!-- MODAL EDIT PROFIL -->
+    <div id="modalProfil">
+        <div class="modal-content">
+            <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
+            <form action="/update_profile" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; text-align: left;">
+                
+                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Nama Tampilan:</label>
+                <input type="text" name="nama" value="{{ user_aktif.nama }}" required style="padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                
+                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Foto Profil Baru (Opsional):</label>
+                <input type="file" name="foto" accept="image/*" style="padding: 10px; border: 1px dashed #ccc;">
+                
+                <button type="submit" style="padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Simpan Perubahan</button>
+                <button type="button" class="btn-tutup" onclick="document.getElementById('modalProfil').style.display='none'" style="padding: 10px; margin-top: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Batal</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <!-- KOTAK KONTAK -->
+        <div class="box">
+            <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
+            <form action="/add_contact" method="POST">
+                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman..." required autocomplete="off">
+                <button type="submit">Invite</button>
+            </form>
+            
+            <h4 style="margin-bottom: 10px; color: #333; margin-top: 25px;">Daftar Kontak (Klik untuk Chat):</h4>
+            <ul class="contact-list">
+                {% for teman in daftar_teman %}
+                    <li onclick="bukaChat('{{ teman.id }}', '{{ teman.nama }}', '{{ teman.foto_profil }}')">
+                        
+                        <!-- Logika Menampilkan Foto Teman -->
+                        {% if teman.foto_profil == 'default.png' %}
+                            <img src="https://ui-avatars.com/api/?name={{ teman.nama }}&background=random" class="foto-profil" alt="Foto">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='uploads/' + teman.foto_profil) }}" class="foto-profil" alt="Foto">
+                        {% endif %}
+                        
+                        <div class="contact-info">
+                            <!-- Menampilkan Nama, BUKAN Nomor HP -->
+                            <span class="contact-name">{{ teman.nama }}</span>
+                            <span class="contact-pin">PIN: {{ teman.pin }}</span>
+                        </div>
+                    </li>
+                {% else %}
+                    <li style="color: gray; font-style: italic; cursor: default; justify-content: center;">Belum ada kontak. Invite PIN di atas!</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- KOTAK CHAT PRIVATE -->
+        <div class="chat-box" id="chatArea">
+            <div class="chat-header">
+                <img id="chatFotoTeman" src="" class="foto-profil" style="display: none;" alt="Foto">
+                <h3 id="namaTemanAktif" style="margin: 0;">Pilih kontak untuk chat</h3>
+            </div>
+            <ul id="boxChat"></ul>
+            
+            <div class="input-group">
+                <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off">
+                <button id="btnKirim">Kirim</button>
+            </div>
+        </div>
+
+    </div>
+
     <script>
-        // Menggunakan koneksi eksplisit untuk menghindari error 400 di reverse proxy
-        var socket = io({
-            path: '/socket.io',
-            transports: ['websocket']
-        });
+        const currentUserId = "{{ user_aktif.id }}";
+        let activeFriendId = null;
 
-        socket.on('connect', function() {
-            console.log("Berhasil terhubung ke server Socket.IO!");
-        });
-
-        socket.on('connect_error', function(err) {
-            console.log("Koneksi gagal:", err);
+        var socket = io({ 
+            path: '/socket.io', 
+            transports: ['websocket'],
+            query: { user_id: currentUserId }
         });
 
         const inputPesan = document.getElementById('inputPesan');
         const btnKirim = document.getElementById('btnKirim');
         const boxChat = document.getElementById('boxChat');
+        const chatFotoTeman = document.getElementById('chatFotoTeman');
+        const namaTemanAktif = document.getElementById('namaTemanAktif');
 
-        function prosesKirim() {
-            let pesanTeks = inputPesan.value.trim();
-            if (pesanTeks !== "") {
-                console.log("Mengirim pesan:", pesanTeks);
-                socket.emit('kirim_pesan', { pesan: pesanTeks });
-                inputPesan.value = '';
+        // Saat Kontak di Klik
+        function bukaChat(friendId, friendNama, friendFoto) {
+            activeFriendId = friendId;
+            namaTemanAktif.innerText = friendNama;
+            
+            // Atur foto di Header Chat
+            chatFotoTeman.style.display = 'block';
+            if(friendFoto === 'default.png') {
+                chatFotoTeman.src = "https://ui-avatars.com/api/?name=" + friendNama + "&background=random";
+            } else {
+                chatFotoTeman.src = "/static/uploads/" + friendFoto;
             }
+
+            document.getElementById('chatArea').style.display = 'block';
+            boxChat.innerHTML = '';
+
+            // Ambil histori chat
+            fetch('/get_chat/' + friendId)
+                .then(res => res.json())
+                .then(data => {
+                    data.forEach(chat => {
+                        tampilkanPesan(chat.pesan, chat.sender_id == currentUserId);
+                    });
+                });
         }
 
-        btnKirim.addEventListener('click', prosesKirim);
-        inputPesan.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                prosesKirim();
+        btnKirim.onclick = function() {
+            if (!activeFriendId) return;
+            const pesan = inputPesan.value;
+            if (pesan.trim() !== '') {
+                socket.emit('kirim_pesan_private', {
+                    sender_id: currentUserId,
+                    receiver_id: activeFriendId,
+                    pesan: pesan
+                });
+                inputPesan.value = '';
+            }
+        };
+
+        socket.on('terima_pesan_private', function(data) {
+            if ((data.sender_id == activeFriendId && data.receiver_id == currentUserId) || 
+                (data.sender_id == currentUserId && data.receiver_id == activeFriendId)) {
+                tampilkanPesan(data.pesan, data.sender_id == currentUserId);
             }
         });
 
-        socket.on('terima_pesan', function(data) {
-            console.log("Pesan diterima:", data);
-            let itemBaru = document.createElement('li');
-            itemBaru.textContent = data.pesan;
-            boxChat.appendChild(itemBaru);
+        function tampilkanPesan(pesan, isSaya) {
+            const li = document.createElement('li');
+            li.textContent = pesan;
+            if (isSaya) li.classList.add('chat-saya');
+            else li.classList.add('chat-teman');
+            
+            boxChat.appendChild(li);
             boxChat.scrollTop = boxChat.scrollHeight;
-        });
+        }
     </script>
 </body>
 </html>
-
