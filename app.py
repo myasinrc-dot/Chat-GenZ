@@ -18,10 +18,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chatgenz.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Buffer besar agar foto tidak gagal kirim & ping_timeout agar koneksi stabil
 socketio = SocketIO(app, async_mode='eventlet', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=60)
 
-# Tracker untuk mencatat user yang sedang online
 user_connections = {}
 
 def get_waktu_wita():
@@ -45,6 +43,7 @@ class Group(db.Model):
     nama_grup = db.Column(db.String(50), nullable=False)
     kode_grup = db.Column(db.String(8), unique=True, nullable=False)
     creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    foto_profil = db.Column(db.String(120), default='default.png')
 
 class GroupMember(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -119,16 +118,15 @@ def room_private(friend_id):
     teman = User.query.get(friend_id)
     if not teman: return redirect(url_for('chat'))
     
-    # Tandai semua pesan masuk menjadi dibaca saat room dibuka
     unread_msgs = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, group_id=None, dibaca=False).all()
     if unread_msgs:
         for p in unread_msgs:
             p.diterima = True
             p.dibaca = True
         db.session.commit()
-        # Beri tau si pengirim bahwa pesannya sudah kita baca
         socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id}, room=f"user_{friend_id}")
-        
+        socketio.emit('reset_badge', {'target_id': friend_id}, room=f"user_{user_id}")
+
     is_online = user_connections.get(friend_id, 0) > 0
     last_seen = "Online" if is_online else (teman.last_seen.strftime("%d/%m/%Y %H:%M") if teman.last_seen else "")
     return render_template('room.html', user_aktif=User.query.get(user_id), target=teman, tipe='private', is_online=is_online, last_seen_str=last_seen)
@@ -145,6 +143,7 @@ def room_group(group_id):
     if last_msg:
         member.last_read_id = last_msg.id
         db.session.commit()
+        socketio.emit('reset_badge_group', {'group_id': group_id}, room=f"user_{user_id}")
 
     return render_template('room.html', user_aktif=User.query.get(user_id), target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
 
@@ -162,6 +161,17 @@ def get_group_messages(group_id):
     pesan_list = Message.query.filter_by(group_id=group_id).order_by(Message.waktu.asc()).all()
     return jsonify([{'id': p.id, 'sender_id': p.sender_id, 'sender_name': User.query.get(p.sender_id).nama, 'pesan': p.pesan, 'tipe': p.tipe} for p in pesan_list])
 
+@app.route('/get_group_members/<int:group_id>')
+def get_group_members(group_id):
+    if 'user_id' not in session: return jsonify([])
+    members = GroupMember.query.filter_by(group_id=group_id).all()
+    result = []
+    for m in members:
+        u = User.query.get(m.user_id)
+        if u:
+            result.append({'id': u.id, 'nama': u.nama, 'pin': u.pin, 'foto_profil': u.foto_profil})
+    return jsonify(result)
+
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -176,7 +186,30 @@ def update_profile():
         foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
         user.foto_profil = new_filename
     db.session.commit()
+    
+    # Broadcast perubahan profil secara real-time ke semua kontak
+    socketio.emit('profile_updated', {'user_id': user.id, 'nama': user.nama, 'foto_profil': user.foto_profil})
     return redirect(url_for('chat'))
+
+@app.route('/update_group/<int:group_id>', methods=['POST'])
+def update_group(group_id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    grup = Group.query.get(group_id)
+    if not grup: return redirect(url_for('chat'))
+    
+    nama_baru = request.form.get('nama_grup')
+    foto = request.files.get('foto')
+    if nama_baru: grup.nama_grup = nama_baru
+    if foto and foto.filename != '':
+        filename = secure_filename(foto.filename)
+        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'jpg'
+        new_filename = f"group_{grup.id}_{int(datetime.utcnow().timestamp())}.{ext}"
+        foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
+        grup.foto_profil = new_filename
+    db.session.commit()
+    
+    socketio.emit('group_info_updated', {'group_id': grup.id, 'nama_grup': grup.nama_grup, 'foto_profil': grup.foto_profil}, room=f"group_{group_id}")
+    return redirect(url_for('room_group', group_id=group_id))
 
 @app.route('/add_contact', methods=['POST'])
 def add_contact():
@@ -236,7 +269,6 @@ def handle_connect():
                 db.session.commit()
             socketio.emit('user_status_change', {'user_id': u_id, 'status': 'online'})
             
-        # Ketika user online (internet nyala lagi), langsung set pesan yang belum diterima jadi diterima
         pending_msgs = Message.query.filter_by(receiver_id=u_id, diterima=False).all()
         if pending_msgs:
             for msg in pending_msgs:

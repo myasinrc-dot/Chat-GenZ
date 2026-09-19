@@ -34,9 +34,9 @@
 <body>
     <div class="header">
         <div class="header-profile">
-            <img src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
+            <img id="myAvatar" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
             <div style="display: flex; flex-direction: column;">
-                <span style="font-weight: bold; font-size: 16px;">{{ user_aktif.nama }}</span>
+                <span id="myName" style="font-weight: bold; font-size: 16px;">{{ user_aktif.nama }}</span>
                 <span style="font-size: 12px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</span>
             </div>
         </div>
@@ -46,7 +46,7 @@
         </div>
     </div>
 
-    <!-- Modal Profil Dikembalikan -->
+    <!-- Modal Edit Profil -->
     <div id="modalProfil">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
@@ -62,8 +62,7 @@
     </div>
 
     <div class="container">
-        
-        <!-- Box Kontak dan Fitur Add Teman Dikembalikan -->
+        <!-- Box Kontak & Invite -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
             <form action="/add_contact" method="POST">
@@ -75,9 +74,9 @@
             <ul class="contact-list">
                 {% for item in daftar_teman %}
                     <li onclick="window.location.href='/room/private/{{ item.user.id }}'">
-                        <img src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="foto-profil">
+                        <img id="avatar-user-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="foto-profil">
                         <div class="contact-info">
-                            <span class="contact-name">{{ item.user.nama }}</span>
+                            <span id="name-user-{{ item.user.id }}" class="contact-name">{{ item.user.nama }}</span>
                             <span id="status-text-{{ item.user.id }}" style="color: {% if item.is_online %}#25d366{% else %}#888{% endif %}; font-weight: {% if item.is_online %}bold{% else %}normal{% endif %}; font-size: 13px;">
                                 {% if item.is_online %}Online{% else %}{{ item.last_seen_str }}{% endif %}
                             </span>
@@ -88,7 +87,7 @@
             </ul>
         </div>
 
-        <!-- Box Grup Chat dan Fitur Buat/Gabung Grup Dikembalikan -->
+        <!-- Box Grup Chat -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
             <form action="/create_group" method="POST">
@@ -104,9 +103,9 @@
             <ul class="contact-list">
                 {% for item in daftar_grup %}
                     <li onclick="window.location.href='/room/group/{{ item.group.id }}'">
-                        <img src="https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff" class="foto-profil">
+                        <img id="group-avatar-{{ item.group.id }}" src="{% if item.group.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + item.group.foto_profil) }}{% endif %}" class="foto-profil">
                         <div class="contact-info">
-                            <span class="contact-name">{{ item.group.nama_grup }}</span>
+                            <span id="group-name-{{ item.group.id }}" class="contact-name">{{ item.group.nama_grup }}</span>
                             <span style="color: #888; font-size: 13px;">Kode: {{ item.group.kode_grup }}</span>
                         </div>
                         <span id="badge-group-{{ item.group.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">{{ item.unread }}</span>
@@ -140,6 +139,26 @@
             }
         });
 
+        // Real-time update foto profil teman tanpa refresh
+        socket.on('profile_updated', data => {
+            if (data.user_id == currentUserId) {
+                document.getElementById('myName').innerText = data.nama;
+                document.getElementById('myAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+            } else {
+                const avatarEl = document.getElementById('avatar-user-' + data.user_id);
+                const nameEl = document.getElementById('name-user-' + data.user_id);
+                if (avatarEl) avatarEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+                if (nameEl) nameEl.innerText = data.nama;
+            }
+        });
+
+        socket.on('group_info_updated', data => {
+            const gName = document.getElementById('group-name-' + data.group_id);
+            const gAvatar = document.getElementById('group-avatar-' + data.group_id);
+            if (gName) gName.innerText = data.nama_grup;
+            if (gAvatar) gAvatar.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama_grup}&background=075e54&color=fff` : `/static/uploads/${data.foto_profil}`;
+        });
+
         socket.on('kontak_baru', data => { playSound(); location.reload(); });
 
         socket.on('notif_pesan_baru', data => {
@@ -160,6 +179,16 @@
                     playSound();
                 }
             }
+        });
+
+        socket.on('reset_badge', data => {
+            const badge = document.getElementById('badge-private-' + data.target_id);
+            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
+        });
+
+        socket.on('reset_badge_group', data => {
+            const badge = document.getElementById('badge-group-' + data.group_id);
+            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
         });
     </script>
 </body>

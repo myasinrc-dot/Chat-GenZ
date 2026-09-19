@@ -6,39 +6,81 @@
     <title>Ruang Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #efeae2; display: flex; flex-direction: column; height: 100vh; }
-        .chat-header { background: #075e54; color: white; padding: 10px 15px; display: flex; align-items: center; gap:10px; }
-        .foto-profil { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #fff; }
+        /* Layout fix agar tidak perlu scroll layar untuk cari kolom ketik */
+        html, body { height: 100%; margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #efeae2; }
+        body { display: flex; flex-direction: column; }
+        
+        .chat-header { background: #075e54; color: white; padding: 10px 15px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .header-left { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .foto-profil { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
+        
         #boxChat { list-style-type: none; padding: 15px; flex: 1; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
-        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; }
+        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; position: relative; }
         .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0; }
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0; }
         .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
+        
+        /* Efek Upload Preview */
+        .image-uploading { opacity: 0.6; filter: blur(2px); }
+        .uploading-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+
         .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; }
-        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center;}
+        
+        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center; flex-shrink: 0; }
         .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
         .input-group label { font-size: 24px; cursor: pointer; padding: 0 5px; color: #128c7e; }
-        .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; }
+        .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
+
+        /* Modal Setelan Grup / Anggota */
+        #modalGrup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; text-align: left; max-height: 80vh; overflow-y: auto; }
+        .modal-content input { margin-bottom: 12px; width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="chat-header">
-        <button onclick="window.location.href='/chat'" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer;">⬅</button>
-        {% if tipe == 'private' %}
-            <img src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
-            <div>
-                <h3 style="margin: 0; font-size: 16px;">{{ target.nama }}</h3>
-                <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">{{ last_seen_str }}</span>
-            </div>
-        {% else %}
-            <img src="https://ui-avatars.com/api/?name={{ target.nama_grup }}&background=075e54&color=fff" class="foto-profil">
-            <div>
-                <h3 style="margin: 0; font-size: 16px;">{{ target.nama_grup }}</h3>
-                <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">Grup Chat</span>
-            </div>
+        <div class="header-left" {% if tipe == 'group' %}onclick="bukaModalGrup()"{% endif %}>
+            <button onclick="window.location.href='/chat'; event.stopPropagation();" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer;">⬅</button>
+            {% if tipe == 'private' %}
+                <img id="headerAvatar" src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
+                <div>
+                    <h3 id="headerTitle" style="margin: 0; font-size: 16px;">{{ target.nama }}</h3>
+                    <span id="targetStatus" style="font-size: 12px; color: #dcf8c6;">{{ last_seen_str }}</span>
+                </div>
+            {% else %}
+                <img id="headerAvatar" src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
+                <div>
+                    <h3 id="headerTitle" style="margin: 0; font-size: 16px;">{{ target.nama_grup }} (Grup)</h3>
+                    <span style="font-size: 12px; color: #dcf8c6;">Klik untuk Setelan & Anggota</span>
+                </div>
+            {% endif %}
+        </div>
+        {% if tipe == 'group' %}
+        <button onclick="bukaModalGrup()" style="background: #128c7e; border: none; color: white; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer;">⚙️ Setelan</button>
         {% endif %}
     </div>
     
+    <!-- MODAL SETELAN GRUP -->
+    <div id="modalGrup">
+        <div class="modal-content">
+            <h3 style="margin-top: 0; color: #075e54;">Setelan Grup</h3>
+            <form action="/update_group/{{ target.id }}" method="POST" enctype="multipart/form-data">
+                <label style="font-size: 13px; font-weight: bold;">Nama Grup:</label>
+                <input type="text" name="nama_grup" value="{{ target.nama_grup if tipe == 'group' else '' }}" required>
+                <label style="font-size: 13px; font-weight: bold;">Foto Grup Baru:</label>
+                <input type="file" name="foto" accept="image/*" style="border: 1px dashed #ccc; padding: 5px; margin-bottom: 12px;">
+                <button type="submit" style="width: 100%; padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Simpan Perubahan</button>
+            </form>
+
+            <h4 style="margin: 15px 0 5px 0; color: #333; font-size: 14px;">Daftar Anggota Grup:</h4>
+            <ul id="listAnggota" style="list-style: none; padding: 0; margin: 0; font-size: 13px; color: #555;">
+                <li>Memuat anggota...</li>
+            </ul>
+
+            <button onclick="document.getElementById('modalGrup').style.display='none'" style="width: 100%; padding: 8px; margin-top: 15px; background: #ccc; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Tutup</button>
+        </div>
+    </div>
+
     <ul id="boxChat"></ul>
     
     <div class="input-group">
@@ -58,6 +100,19 @@
         fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
             .then(r => r.json()).then(data => data.forEach(chatType === 'private' ? renderPrivate : renderGroup));
 
+        function bukaModalGrup() {
+            document.getElementById('modalGrup').style.display = 'flex';
+            fetch('/get_group_members/' + targetId)
+                .then(r => r.json())
+                .then(members => {
+                    const listEl = document.getElementById('listAnggota');
+                    listEl.innerHTML = '';
+                    members.forEach(m => {
+                        listEl.innerHTML += `<li style="padding: 5px 0; border-bottom: 1px solid #eee;">👤 ${m.nama} <span style="color:#888; font-size:11px;">(PIN: ${m.pin})</span></li>`;
+                    });
+                });
+        }
+
         btnKirim.onclick = function() {
             if (inputPesan.value.trim() !== '') {
                 socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
@@ -69,12 +124,27 @@
         };
         inputPesan.addEventListener("keypress", e => { if (e.key === "Enter") btnKirim.click(); });
 
+        // Fitur Image Preview (Loading state ala WhatsApp)
         function kirimGambar(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
-                reader.onload = e => socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
-                    sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: e.target.result, tipe: 'image'
-                });
+                reader.onload = e => {
+                    const base64Data = e.target.result;
+                    
+                    // Render preview lokal sementara dengan status "Mengirim..."
+                    const tempId = 'temp_' + Date.now();
+                    const li = document.createElement('li');
+                    li.id = tempId;
+                    li.classList.add('chat-saya');
+                    li.innerHTML = `<div style="position:relative;"><img src="${base64Data}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
+                    boxChat.appendChild(li);
+                    boxChat.scrollTop = boxChat.scrollHeight;
+
+                    // Kirim ke server
+                    socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
+                        sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: base64Data, tipe: 'image'
+                    });
+                };
                 reader.readAsDataURL(input.files[0]);
                 input.value = '';
             }
@@ -103,20 +173,43 @@
         socket.on('user_status_change', data => {
             if (chatType === 'private' && data.user_id == targetId) targetStatus.innerText = data.status === 'online' ? "Online" : data.last_seen;
         });
+
+        socket.on('profile_updated', data => {
+            if (chatType === 'private' && data.user_id == targetId) {
+                document.getElementById('headerTitle').innerText = data.nama;
+                document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+            }
+        });
+
+        socket.on('group_info_updated', data => {
+            if (chatType === 'group' && data.group_id == targetId) {
+                document.getElementById('headerTitle').innerText = data.nama_grup;
+                document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama_grup}&background=075e54&color=fff` : `/static/uploads/${data.foto_profil}`;
+            }
+        });
         
         socket.on('terima_pesan_private', data => {
-            if ((data.sender_id == targetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == targetId)) {
+            if ((data.sender_id == targetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == currentUserId)) {
+                if (data.sender_id == currentUserId) {
+                    // Hapus elemen preview sementara jika ada
+                    const temps = document.querySelectorAll('.image-uploading');
+                    if (temps.length > 0 && data.tipe === 'image') temps[0].closest('li').remove();
+                }
                 renderPrivate(data);
-                // Langsung ngirim notif balik kalau kita yang menerima saat di room
                 if (data.sender_id == targetId) socket.emit('pesan_terbaca_langsung', { message_id: data.id });
             }
         });
 
         socket.on('terima_pesan_grup', data => {
-            if (data.group_id == targetId) renderGroup(data);
+            if (data.group_id == targetId) {
+                if (data.sender_id == currentUserId) {
+                    const temps = document.querySelectorAll('.image-uploading');
+                    if (temps.length > 0 && data.tipe === 'image') temps[0].closest('li').remove();
+                }
+                renderGroup(data);
+            }
         });
 
-        // 100% Real-time Centang Updates
         socket.on('status_diterima', data => {
             const el = document.getElementById('centang-' + data.message_id);
             if (el && el.dataset.dibaca === "false") { el.innerHTML = '✓✓'; el.style.color = '#777'; }
@@ -152,8 +245,6 @@
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
             let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
             li.innerHTML = sender + (chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : `<span>${chat.pesan}</span>`);
-            
-            // Centang Grup selalu Centang 2 Abu (standar WhatsApp/Telegram Grup)
             if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓✓</span></div>`;
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
