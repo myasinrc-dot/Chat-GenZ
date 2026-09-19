@@ -29,16 +29,25 @@
     </div>
 
     <script>
-        // Koneksi Socket.IO ke server dengan transport polling dan websocket
+        // Menggunakan koneksi eksplisit untuk menghindari error 400 di reverse proxy
         var socket = io({
-            transports: ['polling', 'websocket']
+            path: '/socket.io',
+            transports: ['polling', 'websocket'],
+            upgrade: true
+        });
+
+        socket.on('connect', function() {
+            console.log("Berhasil terhubung ke server Socket.IO!");
+        });
+
+        socket.on('connect_error', function(err) {
+            console.log("Koneksi gagal:", err);
         });
 
         const inputPesan = document.getElementById('inputPesan');
         const btnKirim = document.getElementById('btnKirim');
         const boxChat = document.getElementById('boxChat');
 
-        // Fungsi kirim pesan
         function prosesKirim() {
             let pesanTeks = inputPesan.value.trim();
             if (pesanTeks !== "") {
@@ -48,19 +57,15 @@
             }
         }
 
-        // Event listener saat tombol diklik
         btnKirim.addEventListener('click', prosesKirim);
-
-        // Event listener saat menekan tombol Enter di keyboard
         inputPesan.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 prosesKirim();
             }
         });
 
-        // Menerima pesan dari server dan menampilkannya ke layar
         socket.on('terima_pesan', function(data) {
-            console.log("Pesan diterima dari server:", data);
+            console.log("Pesan diterima:", data);
             let itemBaru = document.createElement('li');
             itemBaru.textContent = data.pesan;
             boxChat.appendChild(itemBaru);
