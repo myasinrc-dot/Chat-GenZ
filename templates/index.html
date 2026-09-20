@@ -1,74 +1,75 @@
-    <script>
-        const currentUserId = "{{ user_aktif.id }}";
-        var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+    const currentUserId = "{{ user_aktif.id }}";
+    var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId } });
 
-        socket.on('notif_pesan_baru', data => {
-            const badgeEl = document.getElementById('badge-friend-' + data.sender_id);
+    socket.on('notif_pesan_baru', data => {
+        const badgeEl = document.getElementById('badge-friend-' + data.sender_id);
+        if (badgeEl) {
+            let currentBadge = badgeEl.querySelector('.badge');
+            let count = currentBadge ? parseInt(currentBadge.innerText) + 1 : 1;
+            badgeEl.innerHTML = `<span class="badge">${count}</span>`;
+        }
+    });
+
+    socket.on('notif_grup_baru', data => {
+        if (data.sender_id != currentUserId) {
+            const badgeEl = document.getElementById('badge-group-' + data.group_id);
             if (badgeEl) {
                 let currentBadge = badgeEl.querySelector('.badge');
                 let count = currentBadge ? parseInt(currentBadge.innerText) + 1 : 1;
                 badgeEl.innerHTML = `<span class="badge">${count}</span>`;
             }
-        });
+        }
+    });
 
-        socket.on('notif_grup_baru', data => {
-            if (data.sender_id != currentUserId) {
-                const badgeEl = document.getElementById('badge-group-' + data.group_id);
-                if (badgeEl) {
-                    let currentBadge = badgeEl.querySelector('.badge');
-                    let count = currentBadge ? parseInt(currentBadge.innerText) + 1 : 1;
-                    badgeEl.innerHTML = `<span class="badge">${count}</span>`;
-                }
+    socket.on('reset_badge', data => {
+        const badgeEl = document.getElementById('badge-friend-' + data.target_id);
+        if (badgeEl) badgeEl.innerHTML = '';
+    });
+
+    socket.on('reset_badge_group', data => {
+        const badgeEl = document.getElementById('badge-group-' + data.group_id);
+        if (badgeEl) badgeEl.innerHTML = '';
+    });
+
+    // Realtime update nama & foto profil di kontak teman secara otomatis
+    socket.on('profile_updated', data => {
+        const nameEl = document.getElementById('friend-name-' + data.user_id);
+        const imgEl = document.getElementById('friend-img-' + data.user_id);
+        if (nameEl) nameEl.innerText = data.nama;
+        if (imgEl) {
+            imgEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+        }
+        if (data.user_id == currentUserId) {
+            document.getElementById('myProfileName').innerText = data.nama;
+            document.getElementById('myProfileImg').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+        }
+    });
+
+    // Handler realtime ketika ada orang lain yang menambahkan PIN kita
+    socket.on('kontak_baru', data => {
+        if (!document.getElementById('chat-friend-' + data.id)) {
+            const chatList = document.querySelector('.chat-list');
+            const fotoUrl = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+
+            const htmlItem = `
+            <a href="/room/private/${data.id}" class="chat-item" id="chat-friend-${data.id}">
+                <img id="friend-img-${data.id}" src="${fotoUrl}">
+                <div class="chat-details">
+                    <div class="chat-name" id="friend-name-${data.id}">${data.nama}</div>
+                    <div style="font-size: 12px; color: #888;">Online</div>
+                </div>
+                <div id="badge-friend-${data.id}"></div>
+            </a>`;
+
+            // Masukkan ke dalam daftar chat pribadi sebelum header grup chat
+            const groupHeader = Array.from(chatList.children).find(el => el.innerText && el.innerText.includes('GRUP CHAT'));
+            if (groupHeader) {
+                groupHeader.insertAdjacentHTML('beforebegin', htmlItem);
+            } else {
+                chatList.insertAdjacentHTML('beforeend', htmlItem);
             }
-        });
-
-        socket.on('reset_badge', data => {
-            const badgeEl = document.getElementById('badge-friend-' + data.target_id);
-            if (badgeEl) badgeEl.innerHTML = '';
-        });
-
-        socket.on('reset_badge_group', data => {
-            const badgeEl = document.getElementById('badge-group-' + data.group_id);
-            if (badgeEl) badgeEl.innerHTML = '';
-        });
-
-        // Realtime update nama & foto profil di kontak teman secara otomatis
-        socket.on('profile_updated', data => {
-            const nameEl = document.getElementById('friend-name-' + data.user_id);
-            const imgEl = document.getElementById('friend-img-' + data.user_id);
-            if (nameEl) nameEl.innerText = data.nama;
-            if (imgEl) {
-                imgEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-            }
-            if (data.user_id == currentUserId) {
-                document.getElementById('myProfileName').innerText = data.nama;
-                document.getElementById('myProfileImg').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-            }
-        });
-
-        // Handler realtime ketika ada orang lain yang menambahkan PIN kita
-        socket.on('kontak_baru', data => {
-            if (!document.getElementById('chat-friend-' + data.id)) {
-                const chatList = document.querySelector('.chat-list');
-                const fotoUrl = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-                
-                const htmlItem = `
-                <a href="/room/private/${data.id}" class="chat-item" id="chat-friend-${data.id}">
-                    <img id="friend-img-${data.id}" src="${fotoUrl}">
-                    <div class="chat-details">
-                        <div class="chat-name" id="friend-name-${data.id}">${data.nama}</div>
-                        <div style="font-size: 12px; color: #888;">Online</div>
-                    </div>
-                    <div id="badge-friend-${data.id}"></div>
-                </a>`;
-                
-                // Masukkan ke dalam daftar chat pribadi sebelum header grup chat
-                const groupHeader = Array.from(chatList.children).find(el => el.innerText && el.innerText.includes('GRUP CHAT'));
-                if (groupHeader) {
-                    groupHeader.insertAdjacentHTML('beforebegin', htmlItem);
-                } else {
-                    chatList.insertAdjacentHTML('beforeend', htmlItem);
-                }
-            }
-        });
-    </script>
+        }
+    });
+</script>
