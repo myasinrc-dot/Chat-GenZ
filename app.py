@@ -33,7 +33,8 @@ class User(db.Model):
     nama = db.Column(db.String(50), default='Pengguna Baru')
     foto_profil = db.Column(db.String(120), default='default.png')
     last_seen = db.Column(db.DateTime, default=get_waktu_wita)
-    status_note = db.Column(db.String(60), nullable=True)
+    status_note = db.Column(db.String(255), nullable=True)
+    status_type = db.Column(db.String(10), default='text')
     note_expires_at = db.Column(db.DateTime, nullable=True)
 
 class Contact(db.Model):
@@ -60,7 +61,7 @@ class Message(db.Model):
     receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
     pesan = db.Column(db.Text, nullable=False)
-    tipe = db.Column(db.String(10), default='text') # text, image, audio
+    tipe = db.Column(db.String(10), default='text')
     waktu = db.Column(db.DateTime, default=get_waktu_wita)
     diterima = db.Column(db.Boolean, default=False)
     dibaca = db.Column(db.Boolean, default=False)
@@ -80,27 +81,43 @@ class Reaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     emoji = db.Column(db.String(10), nullable=False)
 
-# Auto Migration untuk Menambah Kolom Baru Secara Aman Tanpa Menghapus Data
 with app.app_context():
     db.create_all()
-    engine = db.engine
-    inspector = inspect(engine)
-    
-    user_cols = [c['name'] for c in inspector.get_columns('user')]
-    with engine.connect() as conn:
-        if 'status_note' not in user_cols:
-            conn.execute(text("ALTER TABLE user ADD COLUMN status_note VARCHAR(60)"))
-        if 'note_expires_at' not in user_cols:
-            conn.execute(text("ALTER TABLE user ADD COLUMN note_expires_at DATETIME"))
-        
-        msg_cols = [c['name'] for c in inspector.get_columns('message')]
-        if 'reply_to_id' not in msg_cols:
-            conn.execute(text("ALTER TABLE message ADD COLUMN reply_to_id INTEGER"))
-        if 'is_view_once' not in msg_cols:
-            conn.execute(text("ALTER TABLE message ADD COLUMN is_view_once BOOLEAN DEFAULT 0"))
-        if 'is_opened' not in msg_cols:
-            conn.execute(text("ALTER TABLE message ADD COLUMN is_opened BOOLEAN DEFAULT 0"))
-        conn.commit()
+    try:
+        engine = db.engine
+        inspector = inspect(engine)
+        user_cols = [c['name'] for c in inspector.get_columns('user')]
+        with engine.begin() as conn:
+            if 'status_note' not in user_cols:
+                conn.execute(text("ALTER TABLE user ADD COLUMN status_note VARCHAR(255)"))
+            if 'status_type' not in user_cols:
+                conn.execute(text("ALTER TABLE user ADD COLUMN status_type VARCHAR(10) DEFAULT 'text'"))
+            if 'note_expires_at' not in user_cols:
+                conn.execute(text("ALTER TABLE user ADD COLUMN note_expires_at DATETIME"))
+            
+            msg_cols = [c['name'] for c in inspector.get_columns('message')]
+            if 'reply_to_id' not in msg_cols:
+                conn.execute(text("ALTER TABLE message ADD COLUMN reply_to_id INTEGER"))
+            if 'is_view_once' not in msg_cols:
+                conn.execute(text("ALTER TABLE message ADD COLUMN is_view_once BOOLEAN DEFAULT 0"))
+            if 'is_opened' not in msg_cols:
+                conn.execute(text("ALTER TABLE message ADD COLUMN is_opened BOOLEAN DEFAULT 0"))
+    except Exception as e:
+        print("Migration notice:", e)
+
+def get_foto_url(foto_profil, nama):
+    foto = foto_profil if foto_profil else 'default.png'
+    name = nama if nama else 'Pengguna'
+    if foto == 'default.png':
+        return f"https://ui-avatars.com/api/?name={name}&background=random"
+    return url_for('static', filename=f"uploads/{foto}")
+
+def get_group_foto_url(foto_profil, nama_grup):
+    foto = foto_profil if foto_profil else 'default.png'
+    name = nama_grup if nama_grup else 'Grup'
+    if foto == 'default.png':
+        return f"https://ui-avatars.com/api/?name={name}&background=075e54&color=fff"
+    return url_for('static', filename=f"uploads/{foto}")
 
 def generate_pin(length=8, is_group=False):
     karakter = string.ascii_uppercase + string.digits
@@ -121,7 +138,7 @@ def format_message(p):
             elif parent.tipe == 'audio': p_text = "🎵 Pesan Suara"
             reply_info = {
                 'id': parent.id,
-                'sender_name': p_sender.nama if p_sender else 'Pengguna',
+                'sender_name': p_sender.nama if (p_sender and p_sender.nama) else 'Pengguna',
                 'pesan': p_text
             }
             
@@ -135,12 +152,12 @@ def format_message(p):
     return {
         'id': p.id,
         'sender_id': p.sender_id,
-        'sender_name': sender.nama if sender else 'Pengguna',
+        'sender_name': sender.nama if (sender and sender.nama) else 'Pengguna',
         'receiver_id': p.receiver_id,
         'group_id': p.group_id,
         'pesan': pesan_content,
         'tipe': p.tipe,
-        'waktu': p.waktu.isoformat(),
+        'waktu': p.waktu.isoformat() if p.waktu else get_waktu_wita().isoformat(),
         'diterima': p.diterima,
         'dibaca': p.dibaca,
         'reply_to': reply_info,
@@ -172,6 +189,14 @@ def chat():
     
     now = get_waktu_wita()
     my_note = user.status_note if (user.note_expires_at and user.note_expires_at > now) else ""
+    my_type = user.status_type if (user.note_expires_at and user.note_expires_at > now) else "text"
+    
+    my_story = {
+        'content': my_note or "",
+        'type': my_type or "text"
+    }
+
+    my_foto = get_foto_url(user.foto_profil, user.nama)
 
     daftar_teman = []
     for relasi in Contact.query.filter_by(user_id=user.id).all():
@@ -180,31 +205,75 @@ def chat():
             unread = Message.query.filter_by(sender_id=teman.id, receiver_id=user.id, group_id=None, dibaca=False).count()
             is_online = user_connections.get(teman.id, 0) > 0
             last_seen = "Online" if is_online else (teman.last_seen.strftime("%d/%m/%Y %H:%M") if teman.last_seen else "")
-            friend_note = teman.status_note if (teman.note_expires_at and teman.note_expires_at > now) else ""
-            daftar_teman.append({'user': teman, 'unread': unread, 'is_online': is_online, 'last_seen_str': last_seen, 'note': friend_note})
+            has_story = bool(teman.note_expires_at and teman.note_expires_at > now and teman.status_note)
+            teman_foto = get_foto_url(teman.foto_profil, teman.nama)
+            daftar_teman.append({
+                'user': teman,
+                'foto_url': teman_foto,
+                'unread': unread,
+                'is_online': is_online,
+                'last_seen_str': last_seen,
+                'has_story': has_story,
+                'story_content': teman.status_note if has_story else "",
+                'story_type': teman.status_type or "text"
+            })
 
     daftar_grup = []
     for m in GroupMember.query.filter_by(user_id=user.id).all():
         g = Group.query.get(m.group_id)
         if g:
             unread = Message.query.filter(Message.group_id == g.id, Message.id > m.last_read_id).count()
-            daftar_grup.append({'group': g, 'unread': unread})
+            g_foto = get_group_foto_url(g.foto_profil, g.nama_grup)
+            daftar_grup.append({
+                'group': g,
+                'foto_url': g_foto,
+                'unread': unread
+            })
 
-    return render_template('index.html', user_aktif=user, my_note=my_note, daftar_teman=daftar_teman, daftar_grup=daftar_grup)
+    return render_template('index.html', user_aktif=user, my_foto=my_foto, my_story=my_story, daftar_teman=daftar_teman, daftar_grup=daftar_grup)
 
 @app.route('/update_note', methods=['POST'])
 def update_note():
     if 'user_id' not in session: return redirect(url_for('login'))
     user = User.query.get(session['user_id'])
-    note = request.form.get('note', '').strip()[:60]
-    user.status_note = note
-    user.note_expires_at = get_waktu_wita() + timedelta(hours=24) if note else None
+    note_text = request.form.get('note', '').strip()
+    media_file = request.files.get('media')
+    
+    status_content = ""
+    status_type = "text"
+
+    if media_file and media_file.filename != '':
+        filename = secure_filename(media_file.filename)
+        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+        new_filename = f"story_{user.id}_{int(datetime.utcnow().timestamp())}.{ext}"
+        media_file.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
+        status_content = new_filename
+        if ext in ['mp4', 'mov', 'webm', 'mkv']:
+            status_type = 'video'
+        else:
+            status_type = 'image'
+    elif note_text:
+        status_content = note_text[:200]
+        status_type = 'text'
+
+    user.status_note = status_content
+    user.status_type = status_type
+    user.note_expires_at = get_waktu_wita() + timedelta(hours=24) if status_content else None
     db.session.commit()
+    
+    payload = {
+        'user_id': user.id,
+        'nama': user.nama or 'Pengguna',
+        'foto_profil': user.foto_profil or 'default.png',
+        'status_note': user.status_note,
+        'status_type': user.status_type,
+        'has_story': bool(user.status_note)
+    }
     
     contacts = Contact.query.filter_by(user_id=user.id).all()
     for c in contacts:
-        socketio.emit('note_updated', {'user_id': user.id, 'status_note': user.status_note}, room=f"user_{c.friend_id}")
-    socketio.emit('note_updated', {'user_id': user.id, 'status_note': user.status_note}, room=f"user_{user.id}")
+        socketio.emit('note_updated', payload, room=f"user_{c.friend_id}")
+    socketio.emit('note_updated', payload, room=f"user_{user.id}")
     return redirect(url_for('chat'))
 
 @app.route('/room/private/<int:friend_id>')
@@ -287,7 +356,7 @@ def get_group_members(group_id):
     for m in members:
         u = User.query.get(m.user_id)
         if u:
-            result.append({'id': u.id, 'nama': u.nama, 'pin': u.pin, 'foto_profil': u.foto_profil})
+            result.append({'id': u.id, 'nama': u.nama or 'Pengguna', 'pin': u.pin, 'foto_profil': u.foto_profil or 'default.png'})
     return jsonify(result)
 
 @app.route('/get_message_info/<int:message_id>')
@@ -306,9 +375,9 @@ def get_message_info(message_id):
         if not user: continue
         read_record = MessageRead.query.filter_by(message_id=message_id, user_id=user.id).first()
         if read_record:
-            read_list.append({'nama': user.nama, 'waktu': read_record.read_at.strftime("%H:%M - %d/%m/%Y")})
+            read_list.append({'nama': user.nama or 'Pengguna', 'waktu': read_record.read_at.strftime("%H:%M - %d/%m/%Y") if read_record.read_at else ''})
         else:
-            delivered_list.append({'nama': user.nama})
+            delivered_list.append({'nama': user.nama or 'Pengguna'})
             
     return jsonify({'read_by': read_list, 'delivered_to': delivered_list})
 
@@ -366,11 +435,15 @@ def add_contact():
             db.session.commit()
             
             user_aktif = User.query.get(user_id)
+            has_story = bool(user_aktif.note_expires_at and user_aktif.note_expires_at > get_waktu_wita() and user_aktif.status_note)
             socketio.emit('kontak_baru', {
                 'id': user_aktif.id,
-                'nama': user_aktif.nama,
-                'foto_profil': user_aktif.foto_profil,
-                'note': user_aktif.status_note if (user_aktif.note_expires_at and user_aktif.note_expires_at > get_waktu_wita()) else ""
+                'nama': user_aktif.nama or 'Pengguna',
+                'pin': user_aktif.pin,
+                'foto_profil': user_aktif.foto_profil or 'default.png',
+                'has_story': has_story,
+                'story_content': user_aktif.status_note if has_story else "",
+                'story_type': user_aktif.status_type if has_story else "text"
             }, room=f"user_{teman.id}")
     return redirect(url_for('chat'))
 
@@ -445,7 +518,7 @@ def handle_disconnect():
                     socketio.emit('user_status_change', {
                         'user_id': u_id, 
                         'status': 'offline', 
-                        'last_seen': user.last_seen.strftime("%d/%m/%Y %H:%M")
+                        'last_seen': user.last_seen.strftime("%d/%m/%Y %H:%M") if user.last_seen else ""
                     })
 
 @socketio.on('kirim_pesan_private')
