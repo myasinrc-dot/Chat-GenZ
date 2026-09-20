@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ruang Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
@@ -14,39 +14,39 @@
         .foto-profil { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
         
         #boxChat { list-style-type: none; padding: 15px; flex: 1; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
-        #boxChat li { padding: 8px 12px; margin-bottom: 12px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; position: relative; }
+        #boxChat li { padding: 8px 12px; margin-bottom: 12px; border-radius: 8px; max-width: 78%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; position: relative; }
         .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0; }
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0; }
         .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
         
-        /* FITUR 2: UI Balas Pesan */
         .reply-quote-box { background: rgba(0,0,0,0.06); border-left: 4px solid #075e54; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; cursor: pointer; }
         .reply-preview-bar { display: none; background: #e0e0e0; padding: 6px 12px; font-size: 12px; border-left: 4px solid #075e54; align-items: center; justify-content: space-between; flex-shrink: 0; }
 
-        /* FITUR 1: UI Reaksi Emoji */
         .reaction-bar-popup { display: none; position: absolute; top: -35px; left: 0; background: white; border-radius: 20px; padding: 2px 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; gap: 6px; }
         .reaction-bar-popup span { cursor: pointer; font-size: 16px; transition: transform 0.1s; }
         .reaction-bar-popup span:hover { transform: scale(1.3); }
         .reaction-pills { display: flex; gap: 3px; position: absolute; bottom: -10px; right: 8px; background: white; border-radius: 10px; padding: 1px 5px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
 
-        /* FITUR 5: UI View Once */
         .view-once-btn { background: #075e54; color: white; border: none; padding: 8px 12px; border-radius: 15px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 
         .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
         
-        .input-container { display: flex; flex-direction: column; background: #f0f0f0; border-top: 1px solid #ccc; flex-shrink: 0; }
-        .input-group { display: flex; gap: 8px; padding: 8px 10px; align-items: center; }
-        .input-group input[type="text"] { flex: 1; padding: 10px 14px; border: 1px solid #fff; border-radius: 20px; outline: none; }
-        .input-btn-icon { font-size: 20px; cursor: pointer; padding: 4px; color: #128c7e; border: none; background: none; }
-        .input-group button.btn-send { padding: 8px 16px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
+        /* FITUR 3: Tata Letak Input Responsif Anti-Kepotong di Semua HP */
+        .input-container { display: flex; flex-direction: column; background: #f0f0f0; border-top: 1px solid #ccc; flex-shrink: 0; width: 100%; box-sizing: border-box; }
+        .input-group { display: flex; gap: 4px; padding: 8px; align-items: center; width: 100%; box-sizing: border-box; }
+        .input-group input[type="text"] { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #fff; border-radius: 20px; outline: none; font-size: 14px; box-sizing: border-box; }
+        .input-btn-icon { font-size: 18px; cursor: pointer; padding: 4px; color: #128c7e; border: none; background: none; flex-shrink: 0; }
+        .btn-send { padding: 8px 14px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; flex-shrink: 0; white-space: nowrap; font-size: 14px; }
 
-        #modalGrup, #modalMsgInfo, #modalViewOnceMedia { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; }
+        .download-link { color: #075e54; text-decoration: none; font-size: 12px; font-weight: bold; margin-left: 4px; display: inline-flex; align-items: center; }
+
+        #modalGrup, #modalMsgInfo, #modalViewOnceMedia, #modalDetailProfilHeader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; text-align: left; max-height: 80vh; overflow-y: auto; }
     </style>
 </head>
 <body>
     <div class="chat-header">
-        <div class="header-left" {% if tipe == 'group' %}onclick="bukaModalGrup()"{% endif %}>
+        <div class="header-left" onclick="bukaModalHeaderDetail()">
             <button onclick="window.location.href='/chat'; event.stopPropagation();" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer;">⬅</button>
             {% if tipe == 'private' %}
                 <img id="headerAvatar" src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" class="foto-profil">
@@ -63,38 +63,61 @@
             {% endif %}
         </div>
         {% if tipe == 'group' %}
-        <button onclick="bukaModalGrup()" style="background: #128c7e; border: none; color: white; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer;">⚙️ Setelan</button>
+        <button onclick="bukaModalGrup(); event.stopPropagation();" style="background: #128c7e; border: none; color: white; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer;">⚙️ Setelan</button>
         {% endif %}
     </div>
 
     <ul id="boxChat"></ul>
     
     <div class="input-container">
-        <!-- Preview Balas Pesan -->
         <div id="replyPreviewBar" class="reply-preview-bar">
             <div>
                 <strong id="replyPreviewSender" style="color:#075e54;">~ Nama</strong>
-                <div id="replyPreviewText" style="color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px;">Isi pesan...</div>
+                <div id="replyPreviewText" style="color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">Isi pesan...</div>
             </div>
             <button onclick="batalReply()" style="background:none; border:none; color:#777; font-weight:bold; cursor:pointer;">✕</button>
         </div>
 
         <div class="input-group">
-            <label for="inputGambar" class="input-btn-icon" title="Kirim Gambar">📷</label>
+            <!-- FITUR 1: Pilih Dari Galeri & Ambil Dari Kamera Langsung -->
+            <label for="inputGambar" class="input-btn-icon" title="Pilih Foto Galeri">🖼️</label>
             <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
             
-            <!-- FITUR 3: Tombol Voice Note -->
-            <button id="btnMic" class="input-btn-icon" title="Rekam Pesan Suara">🎤</button>
-            
-            <!-- FITUR 5: Toggle Pesan Sekali Lihat -->
-            <button id="btnViewOnce" class="input-btn-icon" onclick="toggleViewOnce()" title="Pesan Sekali Lihat (View Once)" style="border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-size:14px; border:1px solid #128c7e;">1️⃣</button>
+            <button type="button" class="input-btn-icon" onclick="document.getElementById('inputKamera').click()" title="Ambil Foto Kamera">📸</button>
+            <input type="file" id="inputKamera" accept="image/*" capture="environment" style="display: none;" onchange="kirimGambar(this)">
+
+            <button id="btnMic" class="input-btn-icon" title="Rekam Voice Note">🎤</button>
+            <button id="btnViewOnce" class="input-btn-icon" onclick="toggleViewOnce()" title="Pesan Sekali Lihat" style="border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:12px; border:1px solid #128c7e;">1️⃣</button>
 
             <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
             <button id="btnKirim" class="btn-send">Kirim</button>
         </div>
     </div>
 
-    <!-- MODAL POPUP VIEW ONCE -->
+    <!-- MODAL 8: Detail Profil Header Kontak -->
+    <div id="modalDetailProfilHeader">
+        <div class="modal-content" style="text-align: center;">
+            <img src="{% if target.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ target.nama if tipe == 'private' else target.nama_grup }}&background=random{% else %}{{ url_for('static', filename='uploads/' + target.foto_profil) }}{% endif %}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #075e54; margin-bottom: 10px;">
+            <h3 style="margin: 5px 0; color: #333;">{{ target.nama if tipe == 'private' else target.nama_grup }}</h3>
+            {% if tipe == 'private' %}
+            <p style="margin: 5px 0; font-size: 14px; color: #666;">PIN: <strong style="color: #075e54;">{{ target.pin }}</strong></p>
+            {% else %}
+            <p style="margin: 5px 0; font-size: 14px; color: #666;">Kode Grup: <strong style="color: #075e54;">{{ target.kode_grup }}</strong></p>
+            {% endif %}
+            <button onclick="document.getElementById('modalDetailProfilHeader').style.display='none'" style="margin-top: 15px; width: 100%; background: #075e54; color: white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL 5: Rincian Siapa Yang Sudah Lihat Chat di Grup -->
+    <div id="modalMsgInfo">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#075e54;">Info Pembaca Pesan</h3>
+            <div id="msgInfoContent">Memuat data pembaca...</div>
+            <button onclick="document.getElementById('modalMsgInfo').style.display='none'" style="width:100%; padding:8px; margin-top:15px; background:#ccc; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL VIEW ONCE & SETELAN GRUP -->
     <div id="modalViewOnceMedia">
         <div class="modal-content" style="text-align:center; max-width:300px;">
             <h4 style="margin-top:0;">Pesan Sekali Lihat</h4>
@@ -103,13 +126,12 @@
         </div>
     </div>
 
-    <!-- MODAL SETELAN GRUP & INFO PESAN -->
     <div id="modalGrup">
         <div class="modal-content">
             <h3 style="margin-top:0; color:#075e54;">Setelan Grup</h3>
             <form action="/update_group/{{ target.id }}" method="POST" enctype="multipart/form-data">
                 <label style="font-size:13px; font-weight:bold;">Nama Grup:</label>
-                <input type="text" name="nama_grup" value="{{ target.nama_grup if tipe == 'group' else '' }}" required style="width:100%; margin-bottom:10px; padding:6px;">
+                <input type="text" name="nama_grup" value="{{ target.nama_grup if tipe == 'group' else '' }}" required style="width:100%; margin-bottom:10px; padding:6px; box-sizing:border-box;">
                 <label style="font-size:13px; font-weight:bold;">Foto Grup Baru:</label>
                 <input type="file" name="foto" accept="image/*" style="margin-bottom:12px;">
                 <button type="submit" style="width:100%; padding:8px; background:#128c7e; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Simpan Perubahan</button>
@@ -117,14 +139,6 @@
             <h4 style="margin:15px 0 5px 0; color:#333;">Daftar Anggota:</h4>
             <ul id="listAnggota" style="list-style:none; padding:0; margin:0; font-size:13px;"></ul>
             <button onclick="document.getElementById('modalGrup').style.display='none'" style="width:100%; padding:8px; margin-top:15px; background:#ccc; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
-        </div>
-    </div>
-
-    <div id="modalMsgInfo">
-        <div class="modal-content">
-            <h3 style="margin-top:0; color:#075e54;">Info Pesan</h3>
-            <div id="msgInfoContent">Memuat...</div>
-            <button onclick="document.getElementById('modalMsgInfo').style.display='none'" style="width:100%; padding:8px; margin-top:15px; background:#ccc; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
         </div>
     </div>
 
@@ -141,7 +155,10 @@
             return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        // FITUR 5: View Once Toggle
+        function bukaModalHeaderDetail() {
+            document.getElementById('modalDetailProfilHeader').style.display = 'flex';
+        }
+
         function toggleViewOnce() {
             isViewOnceActive = !isViewOnceActive;
             const btn = document.getElementById('btnViewOnce');
@@ -149,7 +166,6 @@
             btn.style.color = isViewOnceActive ? 'white' : '#128c7e';
         }
 
-        // FITUR 2: Set Reply Target
         function setReplyTarget(msgId, senderName, textSnippet) {
             selectedReply = { id: msgId, sender_name: senderName, text: textSnippet };
             document.getElementById('replyPreviewSender').innerText = '~ ' + senderName;
@@ -161,12 +177,13 @@
             document.getElementById('replyPreviewBar').style.display = 'none';
         }
 
-        // FITUR 1: Toggle Reaction
+        // FITUR 4: Emo Reaksi Langsung Tertutup Otomatis
         function sendReaction(msgId, emoji) {
+            const popup = document.getElementById('rx-popup-' + msgId);
+            if (popup) popup.style.display = 'none';
             socket.emit('toggle_reaction', { message_id: msgId, user_id: currentUserId, emoji: emoji });
         }
 
-        // FITUR 3: Voice Note Recorder
         const btnMic = document.getElementById('btnMic');
         btnMic.onclick = async function() {
             if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -233,9 +250,45 @@
             }
         }
 
-        // Buka Pesan Sekali Lihat (View Once)
-        function bukaViewOnce(msgId) {
+        // FITUR 5: Rincian Siapa Saja Yang Sudah Membaca Pesan Grup
+        function bukaInfoPesan(msgId) {
+            if (chatType !== 'group' || String(msgId).startsWith('local_')) return;
+            activeInfoMsgId = msgId;
+            document.getElementById('modalMsgInfo').style.display = 'flex';
+            document.getElementById('msgInfoContent').innerHTML = 'Memuat info pembaca...';
+            
+            fetch('/get_message_info/' + msgId)
+                .then(r => r.json())
+                .then(data => {
+                    let html = '<h4 style="margin:5px 0; color:#333;">Dibaca oleh:</h4>';
+                    if (data.read_by && data.read_by.length > 0) {
+                        data.read_by.forEach(r => {
+                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓✓ <b style="color:#075e54;">${r.nama}</b> <br><span style="color:#888; font-size:11px;">Membaca: ${r.waktu}</span></div>`;
+                        });
+                    } else {
+                        html += '<div style="font-size:13px; color:#888;">Belum ada anggota yang membaca</div>';
+                    }
+
+                    html += '<h4 style="margin:15px 0 5px 0; color:#333;">Terkirim ke (Belum Dibaca):</h4>';
+                    if (data.delivered_to && data.delivered_to.length > 0) {
+                        data.delivered_to.forEach(d => {
+                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓ <b>${d.nama}</b></div>`;
+                        });
+                    } else {
+                        html += '<div style="font-size:13px; color:#888;">Semua anggota sudah membaca</div>';
+                    }
+                    document.getElementById('msgInfoContent').innerHTML = html;
+                });
+        }
+
+        let activeViewOnceMsgId = null;
+        function triggerOpenViewOnce(msgId) {
+            activeViewOnceMsgId = msgId;
             socket.emit('open_view_once', { message_id: msgId });
+        }
+        function tutupViewOnceModal() {
+            document.getElementById('modalViewOnceMedia').style.display = 'none';
+            document.getElementById('viewOnceContainer').innerHTML = '';
         }
 
         socket.on('view_once_opened', data => {
@@ -255,16 +308,6 @@
                 msgEl.innerHTML = `<span style="font-style:italic; color:#888;">🔒 Pesan Sekali Lihat (Sudah Dibuka)</span>`;
             }
         });
-
-        let activeViewOnceMsgId = null;
-        function triggerOpenViewOnce(msgId) {
-            activeViewOnceMsgId = msgId;
-            bukaViewOnce(msgId);
-        }
-        function tutupViewOnceModal() {
-            document.getElementById('modalViewOnceMedia').style.display = 'none';
-            document.getElementById('viewOnceContainer').innerHTML = '';
-        }
 
         socket.on('reaction_updated', data => {
             const rxEl = document.getElementById('reactions-' + data.message_id);
@@ -299,7 +342,6 @@
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
             li.id = 'msg-item-' + chat.id;
 
-            // Bar Popup Reaksi Emoji
             let rxPopup = `<div class="reaction-bar-popup" id="rx-popup-${chat.id}">
                 <span onclick="sendReaction('${chat.id}', '❤️')">❤️</span>
                 <span onclick="sendReaction('${chat.id}', '😂')">😂</span>
@@ -308,16 +350,10 @@
                 <span onclick="sendReaction('${chat.id}', '👍')">👍</span>
             </div>`;
 
-            // Kutipan Reply
-            let replyHtml = '';
-            if (chat.reply_to) {
-                replyHtml = `<div class="reply-quote-box"><strong>~ ${chat.reply_to.sender_name}</strong>: ${chat.reply_to.pesan}</div>`;
-            }
-
-            // Pengirim (di grup)
+            let replyHtml = chat.reply_to ? `<div class="reply-quote-box"><strong>~ ${chat.reply_to.sender_name}</strong>: ${chat.reply_to.pesan}</div>` : '';
             let senderHtml = (!isSaya && chatType === 'group') ? `<div style="font-size:11px; font-weight:bold; color:#075e54; margin-bottom:2px;">~ ${chat.sender_name}</div>` : '';
 
-            // Konten Pesan
+            // FITUR 2: Tombol Download Media (Foto / Audio / Video)
             let bodyHtml = `<div id="msg-body-${chat.id}">`;
             if (chat.is_view_once) {
                 if (chat.is_opened || chat.pesan === 'opened') {
@@ -328,22 +364,21 @@
                     bodyHtml += `<button class="view-once-btn" onclick="triggerOpenViewOnce('${chat.id}')">👁️ Buka Pesan Sekali Lihat</button>`;
                 }
             } else if (chat.tipe === 'image') {
-                bodyHtml += `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+                bodyHtml += `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">
+                <a href="/static/uploads/${chat.pesan}" download class="download-link">💾 Unduh Foto</a>`;
             } else if (chat.tipe === 'audio') {
-                bodyHtml += `<audio controls src="/static/uploads/${chat.pesan}" style="max-width:200px; height:35px;"></audio>`;
+                bodyHtml += `<audio controls src="/static/uploads/${chat.pesan}" style="max-width:200px; height:35px;"></audio>
+                <a href="/static/uploads/${chat.pesan}" download class="download-link">💾 Unduh Voice Note</a>`;
             } else {
                 bodyHtml += `<span>${chat.pesan}</span>`;
             }
             bodyHtml += `</div>`;
 
-            // Tombol Akses Cepat Reply
             let btnReplyShort = `<button onclick="setReplyTarget('${chat.id}', '${chat.sender_name}', '${chat.tipe === 'text' ? chat.pesan : chat.tipe}')" style="background:none; border:none; color:#888; cursor:pointer; font-size:11px; margin-left:5px;">↩️</button>`;
-
-            // Pills Reaksi Emoji
             let rxPills = `<div class="reaction-pills" id="reactions-${chat.id}" style="display:${chat.reactions && chat.reactions.length > 0 ? 'flex' : 'none'};">${chat.reactions ? chat.reactions.map(r => r.emoji).join(' ') : ''}</div>`;
 
             const jamStr = formatWaktuLokal(chat.waktu);
-            let metaHtml = `<div class="chat-info-meta"><span>${jamStr}</span>${btnReplyShort}`;
+            let metaHtml = `<div class="chat-info-meta" ${chatType === 'group' ? `onclick="bukaInfoPesan('${chat.id}')"` : ''}><span>${jamStr}</span>${btnReplyShort}`;
             if (isSaya) {
                 let symbol = chat.dibaca ? '✓✓' : (chat.diterima ? '✓✓' : '✓');
                 let color = chat.dibaca ? '#34b7f1' : '#777';
@@ -353,7 +388,6 @@
 
             li.innerHTML = rxPopup + senderHtml + replyHtml + bodyHtml + metaHtml + rxPills;
             
-            // Toggle Popup Reaksi saat Klik Kanan / Tahan Lamba
             li.oncontextmenu = function(e) {
                 e.preventDefault();
                 const pop = document.getElementById('rx-popup-' + chat.id);
@@ -381,6 +415,11 @@
         socket.on('pesan_dibaca', data => {
             const el = document.getElementById('centang-' + data.message_id);
             if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; }
+        });
+        socket.on('group_read_updated', data => {
+            if (chatType === 'group' && data.group_id == targetId && activeInfoMsgId && document.getElementById('modalMsgInfo').style.display === 'flex') {
+                bukaInfoPesan(activeInfoMsgId);
+            }
         });
     </script>
 </body>

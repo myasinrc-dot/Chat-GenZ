@@ -12,11 +12,13 @@
         .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; background: #fff; }
         
-        /* Baris Instagram Status Notes */
+        /* Baris Story */
         .notes-bar { display: flex; gap: 12px; padding: 12px 15px; overflow-x: auto; background: #f8f9fa; border-bottom: 1px solid #eee; flex-shrink: 0; }
-        .note-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; min-width: 60px; text-align: center; }
-        .note-bubble { background: #ffffff; border: 1px solid #075e54; border-radius: 12px; padding: 4px 8px; font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 4px; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .note-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; min-width: 65px; text-align: center; }
+        .note-avatar-wrapper { position: relative; width: 48px; height: 48px; }
         .note-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; }
+        .note-avatar.has-story { border: 2.5px solid #25d366; padding: 1px; }
+        .note-name { font-size: 11px; color: #333; margin-top: 4px; max-width: 65px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 
         .chat-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .chat-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; cursor: pointer; }
@@ -26,9 +28,9 @@
         .chat-name { font-weight: bold; font-size: 15px; color: #333; margin-bottom: 3px; }
         .badge { background: #25d366; color: white; padding: 3px 7px; border-radius: 50%; font-size: 11px; font-weight: bold; }
         
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 320px; text-align: left; }
-        .modal-content input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .modal-content input[type="text"] { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         .btn { background: #075e54; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
 
         @media (min-width: 768px) {
@@ -43,29 +45,36 @@
 <body>
     <div class="sidebar">
         <div class="sidebar-header">
-            <div class="user-info" onclick="document.getElementById('modalProfil').style.display='flex'">
+            <div class="user-info" onclick="bukaModalDetail('{{ user_aktif.nama }}', '{{ user_aktif.pin }}', '{% if user_aktif.foto_profil == \'default.png\' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for(\'static\', filename=\'uploads/\' + user_aktif.foto_profil) }}{% endif %}')">
                 <img id="myProfileImg" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
                 <div>
                     <div id="myProfileName" style="font-weight: bold; font-size: 15px;">{{ user_aktif.nama }}</div>
-                    <div style="font-size: 11px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</div>
+                    <div style="font-size: 11px; color: #dcf8c6;">PIN: {{ user_aktif.pin }} (Detail)</div>
                 </div>
             </div>
             <div>
-                <button onclick="document.getElementById('modalTambah').style.display='flex'" title="Tambah Kontak/Grup" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">+</button>
+                <button onclick="document.getElementById('modalProfil').style.display='flex'" title="Edit Profil" style="background:none; border:none; color:white; font-size:18px; cursor:pointer;">✏️</button>
+                <button onclick="document.getElementById('modalTambah').style.display='flex'" title="Tambah Kontak/Grup" style="background:none; border:none; color:white; font-size:20px; cursor:pointer; margin-left:5px;">+</button>
                 <a href="/logout" title="Keluar" style="color: white; text-decoration: none; margin-left: 10px; font-size: 18px;">🚪</a>
             </div>
         </div>
 
-        <!-- FITUR 6: Instagram-style Status Notes Bar -->
+        <!-- FITUR 6, 7 & 9: Realtime Story Media (Foto/Video/Teks) & Info Uploader -->
         <div class="notes-bar" id="notesBar">
-            <div class="note-item" onclick="document.getElementById('modalNote').style.display='flex'">
-                <div class="note-bubble" id="myNoteBubble">{{ my_note if my_note else '+ Catatan' }}</div>
-                <img src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="note-avatar">
+            <div class="note-item" onclick="bukaBuatStoryModal()">
+                <div class="note-avatar-wrapper">
+                    <img id="myStoryAvatar" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="note-avatar {% if my_story.content %}has-story{% endif %}">
+                    <span style="position:absolute; bottom:0; right:0; background:#25d366; color:white; border-radius:50%; width:16px; height:16px; font-size:12px; display:flex; align-items:center; justify-content:center; font-weight:bold;">+</span>
+                </div>
+                <div class="note-name">Cerita Saya</div>
             </div>
+
             {% for item in daftar_teman %}
-            <div class="note-item" id="note-user-{{ item.user.id }}" style="display: {% if item.note %}flex{% else %}none{% endif %};" onclick="window.location.href='/room/private/{{ item.user.id }}'">
-                <div class="note-bubble" id="note-bubble-{{ item.user.id }}">{{ item.note }}</div>
-                <img id="friend-note-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="note-avatar">
+            <div class="note-item" id="story-item-user-{{ item.user.id }}" style="display: {% if item.has_story %}flex{% else %}none{% endif %};" onclick="lihatStory('{{ item.user.nama }}', '{% if item.user.foto_profil == \'default.png\' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for(\'static\', filename=\'uploads/\' + item.user.foto_profil) }}{% endif %}', '{{ item.story_content }}', '{{ item.story_type }}')">
+                <div class="note-avatar-wrapper">
+                    <img id="story-avatar-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="note-avatar has-story">
+                </div>
+                <div class="note-name" id="story-name-{{ item.user.id }}">{{ item.user.nama }}</div>
             </div>
             {% endfor %}
         </div>
@@ -74,7 +83,7 @@
             <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">CHAT PRIBADI</div>
             {% for item in daftar_teman %}
             <a href="/room/private/{{ item.user.id }}" class="chat-item" id="chat-friend-{{ item.user.id }}">
-                <img id="friend-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}">
+                <img id="friend-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" onclick="event.preventDefault(); bukaModalDetail('{{ item.user.nama }}', '{{ item.user.pin }}', this.src);">
                 <div class="chat-details">
                     <div class="chat-name" id="friend-name-{{ item.user.id }}">{{ item.user.nama }}</div>
                     <div style="font-size: 12px; color: #888;">{{ item.last_seen_str }}</div>
@@ -108,20 +117,47 @@
         </div>
     </div>
 
-    <!-- MODAL CATATAN (STATUS NOTE) -->
+    <!-- MODAL 8: Detail Profil Kontak -->
+    <div id="modalDetailKontak" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <img id="detailFoto" src="" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #075e54; margin-bottom: 10px;">
+            <h3 id="detailNama" style="margin: 5px 0; color: #333;">-</h3>
+            <p style="margin: 5px 0; font-size: 14px; color: #666;">PIN: <strong id="detailPin" style="color: #075e54;">-</strong></p>
+            <button type="button" onclick="document.getElementById('modalDetailKontak').style.display='none'" style="margin-top: 15px; width: 100%; background: #075e54; color: white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL 6 & 7: Lihat Story (Dengan Keterangan Pengunggah) -->
+    <div id="modalLihatStory" class="modal">
+        <div class="modal-content" style="text-align: center; max-width: 350px; background: #111; color: white;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; text-align: left;">
+                <img id="storyViewerAvatar" src="" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1.5px solid #25d366;">
+                <div>
+                    <h4 id="storyViewerName" style="margin: 0; font-size: 15px;">-</h4>
+                    <span style="font-size: 11px; color: #aaa;">Status (24 Jam)</span>
+                </div>
+            </div>
+            <div id="storyViewerContainer" style="min-height: 200px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 8px; padding: 10px; margin-bottom: 12px;"></div>
+            <button type="button" onclick="document.getElementById('modalLihatStory').style.display='none'" style="width: 100%; background: #333; color: white; border:none; padding:8px; border-radius:4px; cursor:pointer; font-weight:bold;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL BUAT STORY -->
     <div id="modalNote" class="modal">
         <div class="modal-content">
-            <h3>Buat Catatan Status</h3>
-            <p style="font-size: 12px; color: #666;">Catatan ini akan muncul di atas foto profilmu selama 24 jam.</p>
-            <form action="/update_note" method="POST">
-                <input type="text" name="note" maxlength="60" placeholder="Berbagi pemikiran (Maks 60 Karakter)..." value="{{ my_note }}" required>
-                <button type="submit" class="btn">Bagikan</button>
+            <h3>Buat Cerita Status Baru</h3>
+            <form action="/update_note" method="POST" enctype="multipart/form-data">
+                <label style="font-size: 12px; font-weight: bold;">Teks Status:</label>
+                <input type="text" name="note" placeholder="Tuliskan cerita singkat...">
+                <label style="font-size: 12px; font-weight: bold; display: block; margin-top: 8px;">Atau Unggah Foto/Video Pendek:</label>
+                <input type="file" name="media" accept="image/*,video/*" style="margin-top: 5px; margin-bottom: 12px; border: 1px dashed #ccc; padding: 5px; width: 100%; box-sizing: border-box;">
+                <button type="submit" class="btn">Bagikan Cerita</button>
                 <button type="button" onclick="document.getElementById('modalNote').style.display='none'" style="margin-top: 8px; width: 100%; background: #ccc; border:none; padding:8px; border-radius:4px; cursor:pointer;">Batal</button>
             </form>
         </div>
     </div>
 
-    <!-- MODAL PROFIL -->
+    <!-- MODAL PROFIL & TAMBAH KONTAK -->
     <div id="modalProfil" class="modal">
         <div class="modal-content">
             <h3>Edit Profil</h3>
@@ -136,7 +172,6 @@
         </div>
     </div>
 
-    <!-- MODAL TAMBAH KONTAK / GRUP -->
     <div id="modalTambah" class="modal">
         <div class="modal-content">
             <h3>Tambah Kontak / Grup</h3>
@@ -163,7 +198,42 @@
 
     <script>
         const currentUserId = "{{ user_aktif.id }}";
+        const myStoryContent = "{{ my_story.content }}";
+        const myStoryType = "{{ my_story.type }}";
+        const myName = "{{ user_aktif.nama }}";
+        const myAvatar = "{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}";
+
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
+
+        function bukaModalDetail(nama, pin, foto) {
+            document.getElementById('detailNama').innerText = nama;
+            document.getElementById('detailPin').innerText = pin;
+            document.getElementById('detailFoto').src = foto;
+            document.getElementById('modalDetailKontak').style.display = 'flex';
+        }
+
+        function bukaBuatStoryModal() {
+            if (myStoryContent) {
+                lihatStory(myName, myAvatar, myStoryContent, myStoryType);
+            } else {
+                document.getElementById('modalNote').style.display = 'flex';
+            }
+        }
+
+        function lihatStory(nama, avatar, content, type) {
+            document.getElementById('storyViewerName').innerText = nama;
+            document.getElementById('storyViewerAvatar').src = avatar;
+            const container = document.getElementById('storyViewerContainer');
+            
+            if (type === 'image') {
+                container.innerHTML = `<img src="/static/uploads/${content}" style="max-width:100%; max-height:300px; border-radius:6px;">`;
+            } else if (type === 'video') {
+                container.innerHTML = `<video controls autoplay style="max-width:100%; max-height:300px; border-radius:6px;"><source src="/static/uploads/${content}"></video>`;
+            } else {
+                container.innerHTML = `<p style="font-size:16px; color:white; word-break:break-word;">${content}</p>`;
+            }
+            document.getElementById('modalLihatStory').style.display = 'flex';
+        }
 
         socket.on('notif_pesan_baru', data => {
             const badgeEl = document.getElementById('badge-friend-' + data.sender_id);
@@ -195,32 +265,23 @@
             if (badgeEl) badgeEl.innerHTML = '';
         });
 
-        socket.on('profile_updated', data => {
-            const nameEl = document.getElementById('friend-name-' + data.user_id);
-            const imgEl = document.getElementById('friend-img-' + data.user_id);
-            if (nameEl) nameEl.innerText = data.nama;
-            if (imgEl) {
-                imgEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(data.nama)}&background=random` : `/static/uploads/${data.foto_profil}`;
-            }
-            if (data.user_id == currentUserId) {
-                document.getElementById('myProfileName').innerText = data.nama;
-                document.getElementById('myProfileImg').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(data.nama)}&background=random` : `/static/uploads/${data.foto_profil}`;
-            }
-        });
-
-        // Realtime update catatan status ala IG
+        // FITUR 9: Realtime Story Updates tanpa Delay
         socket.on('note_updated', data => {
             if (data.user_id == currentUserId) {
-                document.getElementById('myNoteBubble').innerText = data.status_note ? data.status_note : '+ Catatan';
+                const avatarEl = document.getElementById('myStoryAvatar');
+                if (data.has_story) avatarEl.classList.add('has-story');
+                else avatarEl.classList.remove('has-story');
             } else {
-                const noteItem = document.getElementById('note-user-' + data.user_id);
-                const noteBubble = document.getElementById('note-bubble-' + data.user_id);
-                if (noteItem && noteBubble) {
-                    if (data.status_note) {
-                        noteBubble.innerText = data.status_note;
-                        noteItem.style.display = 'flex';
+                let storyItem = document.getElementById('story-item-user-' + data.user_id);
+                if (storyItem) {
+                    if (data.has_story) {
+                        storyItem.style.display = 'flex';
+                        storyItem.onclick = function() {
+                            const fotoUrl = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${encodeURIComponent(data.nama)}&background=random` : `/static/uploads/${data.foto_profil}`;
+                            lihatStory(data.nama, fotoUrl, data.status_note, data.status_type);
+                        };
                     } else {
-                        noteItem.style.display = 'none';
+                        storyItem.style.display = 'none';
                     }
                 }
             }
@@ -233,7 +294,7 @@
 
                 const htmlItem = `
                 <a href="/room/private/${data.id}" class="chat-item" id="chat-friend-${data.id}">
-                    <img id="friend-img-${data.id}" src="${fotoUrl}">
+                    <img id="friend-img-${data.id}" src="${fotoUrl}" onclick="event.preventDefault(); bukaModalDetail('${data.nama}', '${data.pin}', this.src);">
                     <div class="chat-details">
                         <div class="chat-name" id="friend-name-${data.id}">${data.nama}</div>
                         <div style="font-size: 12px; color: #888;">Online</div>
@@ -252,4 +313,3 @@
     </script>
 </body>
 </html>
-
