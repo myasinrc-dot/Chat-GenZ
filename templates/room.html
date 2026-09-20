@@ -22,14 +22,14 @@
         .image-uploading { opacity: 0.6; filter: blur(2px); }
         .uploading-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
 
-        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 4px; }
+        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
         
         .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center; flex-shrink: 0; }
         .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
         .input-group label { font-size: 24px; cursor: pointer; padding: 0 5px; color: #128c7e; }
         .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
 
-        #modalGrup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        #modalGrup, #modalMsgInfo { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; text-align: left; max-height: 80vh; overflow-y: auto; }
         .modal-content input { margin-bottom: 12px; width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     </style>
@@ -57,6 +57,7 @@
         {% endif %}
     </div>
     
+    <!-- MODAL SETELAN GRUP -->
     <div id="modalGrup">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Setelan Grup</h3>
@@ -74,6 +75,15 @@
             </ul>
 
             <button onclick="document.getElementById('modalGrup').style.display='none'" style="width: 100%; padding: 8px; margin-top: 15px; background: #ccc; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL INFO PESAN GRUP (WAKTU BACA & TERKIRIM) -->
+    <div id="modalMsgInfo">
+        <div class="modal-content">
+            <h3 style="margin-top: 0; color: #075e54;">Info Pesan</h3>
+            <div id="msgInfoContent">Memuat...</div>
+            <button onclick="document.getElementById('modalMsgInfo').style.display='none'" style="width: 100%; padding: 8px; margin-top: 15px; background: #ccc; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Tutup</button>
         </div>
     </div>
 
@@ -104,14 +114,42 @@
             } catch (e) {}
         }
 
-        // Fungsi Format Jam otomatis menyesuaikan waktu lokal HP pengguna (WITA/WIB/WIT, dll)
         function formatWaktuLokal(isoString) {
             if (!isoString) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             const date = new Date(isoString);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        // Muat Riwayat Chat
+        // Buka Info Pesan Grup saat centang / waktu di klik
+        function bukaInfoPesan(msgId) {
+            if (chatType !== 'group' || String(msgId).startsWith('local_')) return;
+            document.getElementById('modalMsgInfo').style.display = 'flex';
+            document.getElementById('msgInfoContent').innerHTML = 'Memuat info pesan...';
+            
+            fetch('/get_message_info/' + msgId)
+                .then(r => r.json())
+                .then(data => {
+                    let html = '<h4 style="margin:5px 0; color:#333;">Dibaca oleh:</h4>';
+                    if (data.read_by && data.read_by.length > 0) {
+                        data.read_by.forEach(r => {
+                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓✓ <b>${r.nama}</b> <br><span style="color:#888; font-size:11px;">Dibaca pukul: ${r.waktu}</span></div>`;
+                        });
+                    } else {
+                        html += '<div style="font-size:13px; color:#888;">Belum ada yang membaca</div>';
+                    }
+
+                    html += '<h4 style="margin:15px 0 5px 0; color:#333;">Terkirim ke (Belum Dibaca):</h4>';
+                    if (data.delivered_to && data.delivered_to.length > 0) {
+                        data.delivered_to.forEach(d => {
+                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓ <b>${d.nama}</b></div>`;
+                        });
+                    } else {
+                        html += '<div style="font-size:13px; color:#888;">Semua anggota sudah membaca pesan ini</div>';
+                    }
+                    document.getElementById('msgInfoContent').innerHTML = html;
+                });
+        }
+
         fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
             .then(r => r.json()).then(data => {
                 data.forEach(chatType === 'private' ? renderPrivate : renderGroup);
@@ -227,7 +265,6 @@
             }
         });
         
-        // Notifikasi Universal & Suara di Room Manapun
         socket.on('notif_pesan_baru', data => {
             if (chatType === 'private' && data.sender_id == targetId) return;
             playSound();
@@ -287,12 +324,13 @@
             }
         });
 
-        // WhatsApp Group Read Ticks (Centang Biru jika semua sudah baca)
         socket.on('group_msg_read_all', data => {
             if (chatType === 'group' && data.group_id == targetId) {
                 document.querySelectorAll('.group-centang').forEach(el => {
-                    el.innerHTML = '✓✓';
-                    el.style.color = '#34b7f1';
+                    if (el.dataset.msgId == data.message_id) {
+                        el.innerHTML = '✓✓';
+                        el.style.color = '#34b7f1';
+                    }
                 });
             }
         });
@@ -346,7 +384,8 @@
 
             if (isSaya) {
                 let tickColor = chat.is_read_all ? '#34b7f1' : '#777';
-                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span><span class="group-centang" style="color: ${tickColor}; font-weight: bold;">✓✓</span></div>`;
+                // Klik pada info waktu/centang untuk membuka rincian siapa saja yang sudah membaca
+                li.innerHTML += `<div class="chat-info-meta" onclick="bukaInfoPesan('${chat.id}')" title="Klik untuk lihat rincian pembaca"><span>${jamStr}</span><span class="group-centang" data-msg-id="${chat.id}" style="color: ${tickColor}; font-weight: bold;">✓✓</span></div>`;
             } else {
                 li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
             }

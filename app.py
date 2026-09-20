@@ -62,6 +62,12 @@ class Message(db.Model):
     diterima = db.Column(db.Boolean, default=False)
     dibaca = db.Column(db.Boolean, default=False)
 
+class MessageRead(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    read_at = db.Column(db.DateTime, default=get_waktu_wita)
+
 with app.app_context():
     db.create_all()
 
@@ -141,11 +147,19 @@ def room_group(group_id):
     
     last_msg = Message.query.filter_by(group_id=group_id).order_by(Message.id.desc()).first()
     if last_msg:
-        member.last_read_id = last_msg.id
+        if last_msg.id > member.last_read_id:
+            member.last_read_id = last_msg.id
+            db.session.commit()
+        
+        # Catat pembacaan untuk semua pesan hingga pesan terakhir
+        unmarked = Message.query.filter(Message.group_id == group_id, Message.id <= member.last_read_id).all()
+        for msg in unmarked:
+            if not MessageRead.query.filter_by(message_id=msg.id, user_id=user_id).first():
+                db.session.add(MessageRead(message_id=msg.id, user_id=user_id))
         db.session.commit()
+        
         socketio.emit('reset_badge_group', {'group_id': group_id}, room=f"user_{user_id}")
         
-        # Cek apakah semua member grup sudah membaca pesan terakhir ini
         total_members = GroupMember.query.filter_by(group_id=group_id).count()
         read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= last_msg.id).count()
         if read_count >= total_members:
@@ -168,8 +182,6 @@ def get_messages(friend_id):
 @app.route('/get_group_messages/<int:group_id>')
 def get_group_messages(group_id):
     pesan_list = Message.query.filter_by(group_id=group_id).order_by(Message.waktu.asc()).all()
-    
-    # Hitung status apakah pesan dibaca oleh semua member
     total_members = GroupMember.query.filter_by(group_id=group_id).count()
     result = []
     for p in pesan_list:
@@ -191,6 +203,38 @@ def get_group_members(group_id):
         if u:
             result.append({'id': u.id, 'nama': u.nama, 'pin': u.pin, 'foto_profil': u.foto_profil})
     return jsonify(result)
+
+@app.route('/get_message_info/<int:message_id>')
+def get_message_info(message_id):
+    if 'user_id' not in session: return jsonify({'error': 'Unauthorized'})
+    msg = Message.query.get(message_id)
+    if not msg or not msg.group_id: return jsonify({'error': 'Not found'})
+    
+    group_id = msg.group_id
+    all_members = GroupMember.query.filter_by(group_id=group_id).all()
+    
+    read_list = []
+    delivered_list = []
+    
+    for mem in all_members:
+        user = User.query.get(mem.user_id)
+        if not user: continue
+        
+        read_record = MessageRead.query.filter_by(message_id=message_id, user_id=user.id).first()
+        if read_record:
+            read_list.append({
+                'nama': user.nama,
+                'waktu': read_record.read_at.strftime("%H:%M - %d/%m/%Y")
+            })
+        else:
+            delivered_list.append({
+                'nama': user.nama
+            })
+            
+    return jsonify({
+        'read_by': read_list,
+        'delivered_to': delivered_list
+    })
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
@@ -286,7 +330,6 @@ def handle_connect():
                 db.session.commit()
             socketio.emit('user_status_change', {'user_id': u_id, 'status': 'online'})
             
-        # Kirim sinyal trigger notifikasi jika ada pesan yang masuk saat offline
         pending_msgs = Message.query.filter_by(receiver_id=u_id, diterima=False).all()
         if pending_msgs:
             for msg in pending_msgs:
@@ -365,10 +408,17 @@ def handle_group_message(data):
 
     pesan_baru = Message(sender_id=sender_id, group_id=group_id, pesan=pesan_teks, tipe=tipe)
     db.session.add(pesan_baru)
+    db.session.commit()
     
     m = GroupMember.query.filter_by(group_id=group_id, user_id=sender_id).first()
-    if m: m.last_read_id = pesan_baru.id
-    db.session.commit()
+    if m: 
+        m.last_read_id = pesan_baru.id
+        db.session.commit()
+
+    # Pengirim otomatis tercatat membaca pesannya sendiri
+    if not MessageRead.query.filter_by(message_id=pesan_baru.id, user_id=sender_id).first():
+        db.session.add(MessageRead(message_id=pesan_baru.id, user_id=sender_id))
+        db.session.commit()
 
     sender = User.query.get(sender_id)
     chat_data = {
@@ -386,7 +436,14 @@ def handle_group_read(data):
     member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
     last_msg = Message.query.filter_by(group_id=group_id).order_by(Message.id.desc()).first()
     if member and last_msg:
-        member.last_read_id = last_msg.id
+        if last_msg.id > member.last_read_id:
+            member.last_read_id = last_msg.id
+            db.session.commit()
+        
+        unmarked_msgs = Message.query.filter(Message.group_id == group_id, Message.id <= member.last_read_id).all()
+        for msg in unmarked_msgs:
+            if not MessageRead.query.filter_by(message_id=msg.id, user_id=user_id).first():
+                db.session.add(MessageRead(message_id=msg.id, user_id=user_id))
         db.session.commit()
         
         total_members = GroupMember.query.filter_by(group_id=group_id).count()
