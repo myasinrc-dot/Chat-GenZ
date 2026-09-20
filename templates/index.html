@@ -12,11 +12,10 @@
         .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; background: #fff; }
         
-        /* Baris Story */
         .notes-bar { display: flex; gap: 12px; padding: 12px 15px; overflow-x: auto; background: #f8f9fa; border-bottom: 1px solid #eee; flex-shrink: 0; }
         .note-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; min-width: 65px; text-align: center; }
         .note-avatar-wrapper { position: relative; width: 48px; height: 48px; }
-        .note-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; }
+        .note-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #ccc; }
         .note-avatar.has-story { border: 2.5px solid #25d366; padding: 1px; }
         .note-name { font-size: 11px; color: #333; margin-top: 4px; max-width: 65px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 
@@ -43,10 +42,12 @@
     </style>
 </head>
 <body>
+    {% set my_foto = 'https://ui-avatars.com/api/?name=' + user_aktif.nama + '&background=random' if user_aktif.foto_profil == 'default.png' else url_for('static', filename='uploads/' + user_aktif.foto_profil) %}
+
     <div class="sidebar">
         <div class="sidebar-header">
-            <div class="user-info" onclick="bukaModalDetail('{{ user_aktif.nama }}', '{{ user_aktif.pin }}', '{% if user_aktif.foto_profil == \'default.png\' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for(\'static\', filename=\'uploads/\' + user_aktif.foto_profil) }}{% endif %}')">
-                <img id="myProfileImg" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
+            <div class="user-info" onclick="bukaModalDetail('{{ user_aktif.nama }}', '{{ user_aktif.pin }}', '{{ my_foto }}')">
+                <img id="myProfileImg" src="{{ my_foto }}" class="foto-profil">
                 <div>
                     <div id="myProfileName" style="font-weight: bold; font-size: 15px;">{{ user_aktif.nama }}</div>
                     <div style="font-size: 11px; color: #dcf8c6;">PIN: {{ user_aktif.pin }} (Detail)</div>
@@ -59,20 +60,20 @@
             </div>
         </div>
 
-        <!-- FITUR 6, 7 & 9: Realtime Story Media (Foto/Video/Teks) & Info Uploader -->
         <div class="notes-bar" id="notesBar">
             <div class="note-item" onclick="bukaBuatStoryModal()">
                 <div class="note-avatar-wrapper">
-                    <img id="myStoryAvatar" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="note-avatar {% if my_story.content %}has-story{% endif %}">
+                    <img id="myStoryAvatar" src="{{ my_foto }}" class="note-avatar {% if my_story.content %}has-story{% endif %}">
                     <span style="position:absolute; bottom:0; right:0; background:#25d366; color:white; border-radius:50%; width:16px; height:16px; font-size:12px; display:flex; align-items:center; justify-content:center; font-weight:bold;">+</span>
                 </div>
                 <div class="note-name">Cerita Saya</div>
             </div>
 
             {% for item in daftar_teman %}
-            <div class="note-item" id="story-item-user-{{ item.user.id }}" style="display: {% if item.has_story %}flex{% else %}none{% endif %};" onclick="lihatStory('{{ item.user.nama }}', '{% if item.user.foto_profil == \'default.png\' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for(\'static\', filename=\'uploads/\' + item.user.foto_profil) }}{% endif %}', '{{ item.story_content }}', '{{ item.story_type }}')">
+            {% set friend_foto = 'https://ui-avatars.com/api/?name=' + item.user.nama + '&background=random' if item.user.foto_profil == 'default.png' else url_for('static', filename='uploads/' + item.user.foto_profil) %}
+            <div class="note-item" id="story-item-user-{{ item.user.id }}" style="display: {% if item.has_story %}flex{% else %}none{% endif %};" onclick="lihatStory('{{ item.user.nama }}', '{{ friend_foto }}', '{{ item.story_content }}', '{{ item.story_type }}')">
                 <div class="note-avatar-wrapper">
-                    <img id="story-avatar-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="note-avatar has-story">
+                    <img id="story-avatar-{{ item.user.id }}" src="{{ friend_foto }}" class="note-avatar has-story">
                 </div>
                 <div class="note-name" id="story-name-{{ item.user.id }}">{{ item.user.nama }}</div>
             </div>
@@ -82,8 +83,9 @@
         <ul class="chat-list">
             <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">CHAT PRIBADI</div>
             {% for item in daftar_teman %}
+            {% set friend_foto = 'https://ui-avatars.com/api/?name=' + item.user.nama + '&background=random' if item.user.foto_profil == 'default.png' else url_for('static', filename='uploads/' + item.user.foto_profil) %}
             <a href="/room/private/{{ item.user.id }}" class="chat-item" id="chat-friend-{{ item.user.id }}">
-                <img id="friend-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" onclick="event.preventDefault(); bukaModalDetail('{{ item.user.nama }}', '{{ item.user.pin }}', this.src);">
+                <img id="friend-img-{{ item.user.id }}" src="{{ friend_foto }}" onclick="event.preventDefault(); bukaModalDetail('{{ item.user.nama }}', '{{ item.user.pin }}', this.src);">
                 <div class="chat-details">
                     <div class="chat-name" id="friend-name-{{ item.user.id }}">{{ item.user.nama }}</div>
                     <div style="font-size: 12px; color: #888;">{{ item.last_seen_str }}</div>
@@ -96,8 +98,9 @@
 
             <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">GRUP CHAT</div>
             {% for item in daftar_grup %}
+            {% set group_foto = 'https://ui-avatars.com/api/?name=' + item.group.nama_grup + '&background=075e54&color=fff' if item.group.foto_profil == 'default.png' else url_for('static', filename='uploads/' + item.group.foto_profil) %}
             <a href="/room/group/{{ item.group.id }}" class="chat-item" id="chat-group-{{ item.group.id }}">
-                <img src="{% if item.group.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + item.group.foto_profil) }}{% endif %}">
+                <img src="{{ group_foto }}">
                 <div class="chat-details">
                     <div class="chat-name">{{ item.group.nama_grup }}</div>
                     <div style="font-size: 11px; color: #075e54; font-weight: bold;">PIN: {{ item.group.kode_grup }}</div>
@@ -117,7 +120,7 @@
         </div>
     </div>
 
-    <!-- MODAL 8: Detail Profil Kontak -->
+    <!-- MODAL DETAIL KONTAK -->
     <div id="modalDetailKontak" class="modal">
         <div class="modal-content" style="text-align: center;">
             <img id="detailFoto" src="" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #075e54; margin-bottom: 10px;">
@@ -127,7 +130,7 @@
         </div>
     </div>
 
-    <!-- MODAL 6 & 7: Lihat Story (Dengan Keterangan Pengunggah) -->
+    <!-- MODAL LIHAT STORY -->
     <div id="modalLihatStory" class="modal">
         <div class="modal-content" style="text-align: center; max-width: 350px; background: #111; color: white;">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; text-align: left;">
@@ -201,7 +204,7 @@
         const myStoryContent = "{{ my_story.content }}";
         const myStoryType = "{{ my_story.type }}";
         const myName = "{{ user_aktif.nama }}";
-        const myAvatar = "{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}";
+        const myAvatar = "{{ my_foto }}";
 
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
 
@@ -265,7 +268,6 @@
             if (badgeEl) badgeEl.innerHTML = '';
         });
 
-        // FITUR 9: Realtime Story Updates tanpa Delay
         socket.on('note_updated', data => {
             if (data.user_id == currentUserId) {
                 const avatarEl = document.getElementById('myStoryAvatar');
