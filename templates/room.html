@@ -78,7 +78,7 @@
         </div>
     </div>
 
-    <!-- MODAL INFO PESAN GRUP (WAKTU BACA & TERKIRIM) -->
+    <!-- MODAL INFO PESAN GRUP -->
     <div id="modalMsgInfo">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Info Pesan</h3>
@@ -98,7 +98,7 @@
 
     <script>
         const currentUserId = "{{ user_aktif.id }}", currentUserName = "{{ user_aktif.nama }}", chatType = "{{ tipe }}", targetId = "{{ target.id }}";
-        let typingTimer = null;
+        let typingTimer = null, activeInfoMsgId = null;
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
 
         const inputPesan = document.getElementById('inputPesan'), btnKirim = document.getElementById('btnKirim'), boxChat = document.getElementById('boxChat'), targetStatus = document.getElementById('targetStatus');
@@ -120,12 +120,15 @@
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        // Buka Info Pesan Grup saat centang / waktu di klik
         function bukaInfoPesan(msgId) {
             if (chatType !== 'group' || String(msgId).startsWith('local_')) return;
+            activeInfoMsgId = msgId;
             document.getElementById('modalMsgInfo').style.display = 'flex';
+            loadMessageInfoData(msgId);
+        }
+
+        function loadMessageInfoData(msgId) {
             document.getElementById('msgInfoContent').innerHTML = 'Memuat info pesan...';
-            
             fetch('/get_message_info/' + msgId)
                 .then(r => r.json())
                 .then(data => {
@@ -202,7 +205,6 @@
                 const reader = new FileReader();
                 reader.onload = e => {
                     const base64Data = e.target.result;
-                    
                     const dummyChat = {
                         id: 'local_' + Date.now(),
                         sender_id: currentUserId,
@@ -246,35 +248,29 @@
         socket.on('status_typing_group', data => {
             if (chatType === 'group' && data.sender_id != currentUserId) targetStatus.innerText = data.is_typing ? `${data.sender_name} sedang mengetik...` : "Grup Chat";
         });
-
         socket.on('user_status_change', data => {
             if (chatType === 'private' && data.user_id == targetId) targetStatus.innerText = data.status === 'online' ? "Online" : data.last_seen;
         });
-
         socket.on('profile_updated', data => {
             if (chatType === 'private' && data.user_id == targetId) {
                 document.getElementById('headerTitle').innerText = data.nama;
                 document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
             }
         });
-
         socket.on('group_info_updated', data => {
             if (chatType === 'group' && data.group_id == targetId) {
                 document.getElementById('headerTitle').innerText = data.nama_grup;
                 document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama_grup}&background=075e54&color=fff` : `/static/uploads/${data.foto_profil}`;
             }
         });
-        
         socket.on('notif_pesan_baru', data => {
             if (chatType === 'private' && data.sender_id == targetId) return;
             playSound();
         });
-
         socket.on('notif_grup_baru', data => {
             if (chatType === 'group' && data.group_id == targetId) return;
             if (data.sender_id != currentUserId) playSound();
         });
-
         socket.on('sync_offline_notifications', () => {
             playSound();
             setTimeout(() => location.reload(), 1000);
@@ -318,20 +314,22 @@
                 if(data.message_id) {
                     const el = document.getElementById('centang-' + data.message_id);
                     if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; }
-                } else {
-                    document.querySelectorAll('.status-centang').forEach(el => { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; });
                 }
             }
         });
 
         socket.on('group_msg_read_all', data => {
             if (chatType === 'group' && data.group_id == targetId) {
-                document.querySelectorAll('.group-centang').forEach(el => {
-                    if (el.dataset.msgId == data.message_id) {
-                        el.innerHTML = '✓✓';
-                        el.style.color = '#34b7f1';
-                    }
-                });
+                const el = document.querySelector(`.group-centang[data-msg-id="${data.message_id}"]`);
+                if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; }
+            }
+        });
+
+        socket.on('group_read_updated', data => {
+            if (chatType === 'group' && data.group_id == targetId) {
+                if (activeInfoMsgId && document.getElementById('modalMsgInfo').style.display === 'flex') {
+                    loadMessageInfoData(activeInfoMsgId);
+                }
             }
         });
 
@@ -353,9 +351,12 @@
             const jamStr = formatWaktuLokal(chat.waktu);
             
             if (isSaya) {
-                let symbol = '✓', color = '#777', isRead = "false";
+                let symbol = '🕒', color = '#777', isRead = "false";
                 if (chat.dibaca) { symbol = '✓✓'; color = '#34b7f1'; isRead = "true"; }
                 else if (chat.diterima) { symbol = '✓✓'; }
+                else if (String(chat.id).startsWith('local_')) { symbol = '🕒'; }
+                else { symbol = '✓'; }
+
                 li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
             } else {
                 li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
@@ -384,8 +385,8 @@
 
             if (isSaya) {
                 let tickColor = chat.is_read_all ? '#34b7f1' : '#777';
-                // Klik pada info waktu/centang untuk membuka rincian siapa saja yang sudah membaca
-                li.innerHTML += `<div class="chat-info-meta" onclick="bukaInfoPesan('${chat.id}')" title="Klik untuk lihat rincian pembaca"><span>${jamStr}</span><span class="group-centang" data-msg-id="${chat.id}" style="color: ${tickColor}; font-weight: bold;">✓✓</span></div>`;
+                let symbol = String(chat.id).startsWith('local_') ? '🕒' : '✓✓';
+                li.innerHTML += `<div class="chat-info-meta" onclick="bukaInfoPesan('${chat.id}')" title="Klik untuk lihat rincian pembaca"><span>${jamStr}</span><span class="group-centang" data-msg-id="${chat.id}" style="color: ${tickColor}; font-weight: bold;">${symbol}</span></div>`;
             } else {
                 li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
             }

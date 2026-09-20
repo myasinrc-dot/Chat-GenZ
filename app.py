@@ -129,8 +129,10 @@ def room_private(friend_id):
         for p in unread_msgs:
             p.diterima = True
             p.dibaca = True
-        db.session.commit()
-        socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id}, room=f"user_{friend_id}")
+            db.session.commit()
+            # Kirim sinyal dibaca individual untuk setiap pesan agar centang biru akurat
+            socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id, 'message_id': p.id}, room=f"user_{friend_id}")
+        
         socketio.emit('reset_badge', {'target_id': friend_id}, room=f"user_{user_id}")
 
     is_online = user_connections.get(friend_id, 0) > 0
@@ -151,7 +153,6 @@ def room_group(group_id):
             member.last_read_id = last_msg.id
             db.session.commit()
         
-        # Catat pembacaan untuk semua pesan hingga pesan terakhir
         unmarked = Message.query.filter(Message.group_id == group_id, Message.id <= member.last_read_id).all()
         for msg in unmarked:
             if not MessageRead.query.filter_by(message_id=msg.id, user_id=user_id).first():
@@ -164,6 +165,8 @@ def room_group(group_id):
         read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= last_msg.id).count()
         if read_count >= total_members:
             socketio.emit('group_msg_read_all', {'group_id': group_id, 'message_id': last_msg.id}, room=f"group_{group_id}")
+        
+        socketio.emit('group_read_updated', {'group_id': group_id, 'user_id': user_id}, room=f"group_{group_id}")
 
     return render_template('room.html', user_aktif=User.query.get(user_id), target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
 
@@ -415,7 +418,6 @@ def handle_group_message(data):
         m.last_read_id = pesan_baru.id
         db.session.commit()
 
-    # Pengirim otomatis tercatat membaca pesannya sendiri
     if not MessageRead.query.filter_by(message_id=pesan_baru.id, user_id=sender_id).first():
         db.session.add(MessageRead(message_id=pesan_baru.id, user_id=sender_id))
         db.session.commit()
@@ -450,6 +452,8 @@ def handle_group_read(data):
         read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= last_msg.id).count()
         if read_count >= total_members:
             socketio.emit('group_msg_read_all', {'group_id': group_id, 'message_id': last_msg.id}, room=f"group_{group_id}")
+        
+        socketio.emit('group_read_updated', {'group_id': group_id, 'user_id': user_id}, room=f"group_{group_id}")
 
 @socketio.on('typing_private')
 def handle_typing_private(data):

@@ -3,112 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat-GenZ Pro</title>
+    <title>ChatGenz</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background: #e5ddd5; }
-        .header { background-color: #075e54; color: white; padding: 10px 15px; display: flex; align-items: center; justify-content: space-between; }
-        .header-profile { display: flex; align-items: center; gap: 10px; }
-        .foto-profil { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
-        .header a { color: #fff; text-decoration: underline; margin-left: 15px; font-weight: bold; font-size: 14px; cursor: pointer; }
-        .container { max-width: 600px; margin: 20px auto; padding: 0 10px; }
-        .box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .box form { display: flex; gap: 10px; margin-bottom: 10px; }
-        .box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        .box button { padding: 10px 15px; background: #128c7e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; background: #075e54; color: white; display: flex; align-items: center; justify-content: space-between; }
+        .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; }
+        .chat-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .chat-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; cursor: pointer; }
+        .chat-item:hover { background: #f5f5f5; }
+        .chat-item img { width: 45px; height: 45px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
+        .chat-details { flex: 1; }
+        .chat-name { font-weight: bold; font-size: 15px; color: #333; margin-bottom: 3px; }
+        .badge { background: #25d366; color: white; padding: 3px 7px; border-radius: 50%; font-size: 11px; font-weight: bold; }
+        .main-content { flex: 1; display: flex; align-items: center; justify-content: center; background: #efeae2; color: #666; text-align: center; }
         
-        .contact-list { list-style: none; padding: 0; margin: 0; }
-        .contact-list li { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 4px; transition: 0.2s; position: relative; }
-        .contact-list li:hover { background: #f0f0f0; }
-        .contact-info { display: flex; flex-direction: column; flex: 1; }
-        .contact-name { font-weight: bold; color: #333; font-size: 16px; }
-        
-        .badge-notif { background-color: #25d366; color: white; border-radius: 50%; padding: 3px 8px; font-size: 12px; font-weight: bold; text-align: center; display: inline-block; }
-
-        #modalProfil { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center; }
-        .modal-content input { margin-bottom: 15px; width: 100%; box-sizing: border-box; }
-        .btn-tutup { background: #ccc !important; color: #333 !important; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 300px; text-align: left; }
+        .modal-content input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .btn { background: #075e54; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-profile">
-            <img id="myAvatar" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
-            <div style="display: flex; flex-direction: column;">
-                <span id="myName" style="font-weight: bold; font-size: 16px;">{{ user_aktif.nama }}</span>
-                <span style="font-size: 12px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</span>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="user-info" onclick="document.getElementById('modalProfil').style.display='flex'">
+                <img src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
+                <div>
+                    <div style="font-weight: bold; font-size: 15px;">{{ user_aktif.nama }}</div>
+                    <div style="font-size: 11px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</div>
+                </div>
+            </div>
+            <div>
+                <button onclick="document.getElementById('modalTambah').style.display='flex'" title="Tambah Kontak/Grup" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">+</button>
+                <a href="/logout" title="Keluar" style="color: white; text-decoration: none; margin-left: 10px; font-size: 18px;">🚪</a>
             </div>
         </div>
+
+        <ul class="chat-list">
+            <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">CHAT PRIBADI</div>
+            {% for item in daftar_teman %}
+            <a href="/room/private/{{ item.user.id }}" class="chat-item" id="chat-friend-{{ item.user.id }}">
+                <img src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}">
+                <div class="chat-details">
+                    <div class="chat-name">{{ item.user.nama }}</div>
+                    <div style="font-size: 12px; color: #888;">{{ item.last_seen_str }}</div>
+                </div>
+                <div id="badge-friend-{{ item.user.id }}">
+                    {% if item.unread > 0 %}<span class="badge">{{ item.unread }}</span>{% endif %}
+                </div>
+            </a>
+            {% endfor %}
+
+            <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">GRUP CHAT</div>
+            {% for item in daftar_grup %}
+            <a href="/room/group/{{ item.group.id }}" class="chat-item" id="chat-group-{{ item.group.id }}">
+                <img src="{% if item.group.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + item.group.foto_profil) }}{% endif %}">
+                <div class="chat-details">
+                    <div class="chat-name">{{ item.group.nama_grup }}</div>
+                    <div style="font-size: 12px; color: #888;">Grup Chat</div>
+                </div>
+                <div id="badge-group-{{ item.group.id }}">
+                    {% if item.unread > 0 %}<span class="badge">{{ item.unread }}</span>{% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="main-content">
         <div>
-            <a onclick="document.getElementById('modalProfil').style.display='flex'">Edit Profil</a>
-            <a href="/logout">Logout</a>
+            <h2>Selamat Datang di ChatGenz</h2>
+            <p>Pilih ruang obrolan di sebelah kiri untuk mulai berkirim pesan.</p>
         </div>
     </div>
 
-    <div id="modalProfil">
+    <!-- MODAL PROFIL -->
+    <div id="modalProfil" class="modal">
         <div class="modal-content">
-            <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
-            <form action="/update_profile" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; text-align: left;">
-                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Nama Tampilan:</label>
-                <input type="text" name="nama" value="{{ user_aktif.nama }}" required style="padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
-                <label style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">Foto Profil Baru:</label>
-                <input type="file" name="foto" accept="image/*" style="padding: 10px; border: 1px dashed #ccc;">
-                <button type="submit" style="padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold;">Simpan</button>
-                <button type="button" class="btn-tutup" onclick="document.getElementById('modalProfil').style.display='none'" style="padding: 10px; margin-top: 10px; border: none; border-radius: 4px; font-weight: bold;">Batal</button>
+            <h3>Edit Profil</h3>
+            <form action="/update_profile" method="POST" enctype="multipart/form-data">
+                <label>Nama:</label>
+                <input type="text" name="nama" value="{{ user_aktif.nama }}" required>
+                <label>Foto Profil:</label>
+                <input type="file" name="foto" accept="image/*">
+                <button type="submit" class="btn">Simpan</button>
+                <button type="button" onclick="document.getElementById('modalProfil').style.display='none'" style="margin-top: 8px; width: 100%; background: #ccc; border:none; padding:8px; border-radius:4px; cursor:pointer;">Batal</button>
             </form>
         </div>
     </div>
 
-    <div class="container">
-        <div class="box">
-            <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
+    <!-- MODAL TAMBAH KONTAK / GRUP -->
+    <div id="modalTambah" class="modal">
+        <div class="modal-content">
+            <h3>Tambah Kontak / Grup</h3>
             <form action="/add_contact" method="POST">
-                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman..." required autocomplete="off">
-                <button type="submit">Invite</button>
+                <label>PIN Teman:</label>
+                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman">
+                <button type="submit" class="btn">Tambah Kontak</button>
             </form>
-            
-            <h4 style="margin: 20px 0 10px 0; color: #333;">Kontak (Private Chat)</h4>
-            <ul class="contact-list">
-                {% for item in daftar_teman %}
-                    <li onclick="window.location.href='/room/private/{{ item.user.id }}'">
-                        <img id="avatar-user-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="foto-profil">
-                        <div class="contact-info">
-                            <span id="name-user-{{ item.user.id }}" class="contact-name">{{ item.user.nama }}</span>
-                            <span id="status-text-{{ item.user.id }}" style="color: {% if item.is_online %}#25d366{% else %}#888{% endif %}; font-weight: {% if item.is_online %}bold{% else %}normal{% endif %}; font-size: 13px;">
-                                {% if item.is_online %}Online{% else %}{{ item.last_seen_str }}{% endif %}
-                            </span>
-                        </div>
-                        <span id="badge-private-{{ item.user.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">{{ item.unread }}</span>
-                    </li>
-                {% endfor %}
-            </ul>
-        </div>
-
-        <div class="box">
-            <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
+            <hr style="margin: 15px 0;">
             <form action="/create_group" method="POST">
-                <input type="text" name="nama_grup" placeholder="Nama Grup Baru..." required>
-                <button type="submit" style="background: #075e54;">Buat</button>
+                <label>Buat Grup:</label>
+                <input type="text" name="nama_grup" placeholder="Nama Grup Baru">
+                <button type="submit" class="btn" style="background: #25d366;">Buat Grup</button>
             </form>
+            <hr style="margin: 15px 0;">
             <form action="/join_group" method="POST">
-                <input type="text" name="kode_grup" placeholder="Masukkan Kode Grup..." required>
-                <button type="submit" style="background: #128c7e;">Gabung</button>
+                <label>Gabung Grup (Kode):</label>
+                <input type="text" name="kode_grup" placeholder="Kode 8 Karakter Grup">
+                <button type="submit" class="btn" style="background: #128c7e;">Gabung Grup</button>
             </form>
-
-            <h4 style="margin: 20px 0 10px 0; color: #333;">Daftar Grup</h4>
-            <ul class="contact-list">
-                {% for item in daftar_grup %}
-                    <li onclick="window.location.href='/room/group/{{ item.group.id }}'">
-                        <img id="group-avatar-{{ item.group.id }}" src="{% if item.group.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + item.group.foto_profil) }}{% endif %}" class="foto-profil">
-                        <div class="contact-info">
-                            <span id="group-name-{{ item.group.id }}" class="contact-name">{{ item.group.nama_grup }}</span>
-                            <span style="color: #888; font-size: 13px;">Kode: {{ item.group.kode_grup }}</span>
-                        </div>
-                        <span id="badge-group-{{ item.group.id }}" class="badge-notif" style="{% if item.unread == 0 %}display: none;{% endif %}">{{ item.unread }}</span>
-                    </li>
-                {% endfor %}
-            </ul>
+            <button type="button" onclick="document.getElementById('modalTambah').style.display='none'" style="margin-top: 15px; width: 100%; background: #ccc; border:none; padding:8px; border-radius:4px; cursor:pointer;">Tutup</button>
         </div>
     </div>
 
@@ -116,70 +124,34 @@
         const currentUserId = "{{ user_aktif.id }}";
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
 
-        function playSound() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime);
-                gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.start(); osc.stop(ctx.currentTime + 0.15);
-            } catch (e) {}
-        }
-
-        socket.on('user_status_change', data => {
-            const el = document.getElementById('status-text-' + data.user_id);
-            if (el) {
-                el.innerText = data.status === 'online' ? "Online" : data.last_seen;
-                el.style.color = data.status === 'online' ? "#25d366" : "#888";
-                el.style.fontWeight = data.status === 'online' ? "bold" : "normal";
-            }
-        });
-
-        socket.on('profile_updated', data => {
-            if (data.user_id == currentUserId) {
-                document.getElementById('myName').innerText = data.nama;
-                document.getElementById('myAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-            } else {
-                const avatarEl = document.getElementById('avatar-user-' + data.user_id);
-                const nameEl = document.getElementById('name-user-' + data.user_id);
-                if (avatarEl) avatarEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-                if (nameEl) nameEl.innerText = data.nama;
-            }
-        });
-
-        socket.on('group_info_updated', data => {
-            const gName = document.getElementById('group-name-' + data.group_id);
-            const gAvatar = document.getElementById('group-avatar-' + data.group_id);
-            if (gName) gName.innerText = data.nama_grup;
-            if (gAvatar) gAvatar.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama_grup}&background=075e54&color=fff` : `/static/uploads/${data.foto_profil}`;
-        });
-
-        socket.on('kontak_baru', data => { playSound(); location.reload(); });
-
         socket.on('notif_pesan_baru', data => {
-            const badge = document.getElementById('badge-private-' + data.sender_id);
-            if(badge) {
-                badge.style.display = 'inline-block';
-                badge.innerText = parseInt(badge.innerText || 0) + 1;
-                playSound();
+            const badgeEl = document.getElementById('badge-friend-' + data.sender_id);
+            if (badgeEl) {
+                let currentBadge = badgeEl.querySelector('.badge');
+                let count = currentBadge ? parseInt(currentBadge.innerText) + 1 : 1;
+                badgeEl.innerHTML = `<span class="badge">${count}</span>`;
             }
         });
 
         socket.on('notif_grup_baru', data => {
-            if(data.sender_id != currentUserId) {
-                const badge = document.getElementById('badge-group-' + data.group_id);
-                if(badge) {
-                    badge.style.display = 'inline-block';
-                    badge.innerText = parseInt(badge.innerText || 0) + 1;
-                    playSound();
+            if (data.sender_id != currentUserId) {
+                const badgeEl = document.getElementById('badge-group-' + data.group_id);
+                if (badgeEl) {
+                    let currentBadge = badgeEl.querySelector('.badge');
+                    let count = currentBadge ? parseInt(currentBadge.innerText) + 1 : 1;
+                    badgeEl.innerHTML = `<span class="badge">${count}</span>`;
                 }
             }
         });
 
-        socket.on('sync_offline_notifications', () => {
-            playSound();
-            setTimeout(() => location.reload(), 1000);
+        socket.on('reset_badge', data => {
+            const badgeEl = document.getElementById('badge-friend-' + data.target_id);
+            if (badgeEl) badgeEl.innerHTML = '';
+        });
+
+        socket.on('reset_badge_group', data => {
+            const badgeEl = document.getElementById('badge-group-' + data.group_id);
+            if (badgeEl) badgeEl.innerHTML = '';
         });
     </script>
 </body>
