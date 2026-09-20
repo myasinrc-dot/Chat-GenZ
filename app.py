@@ -18,7 +18,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chatgenz.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-socketio = SocketIO(app, async_mode='eventlet', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=60)
+socketio = SocketIO(app, async_mode='eventlet', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=10, ping_interval=5)
 
 user_connections = {}
 
@@ -186,8 +186,6 @@ def update_profile():
         foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
         user.foto_profil = new_filename
     db.session.commit()
-    
-    # Broadcast perubahan profil secara real-time ke semua kontak
     socketio.emit('profile_updated', {'user_id': user.id, 'nama': user.nama, 'foto_profil': user.foto_profil})
     return redirect(url_for('chat'))
 
@@ -207,7 +205,6 @@ def update_group(group_id):
         foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
         grup.foto_profil = new_filename
     db.session.commit()
-    
     socketio.emit('group_info_updated', {'group_id': grup.id, 'nama_grup': grup.nama_grup, 'foto_profil': grup.foto_profil}, room=f"group_{group_id}")
     return redirect(url_for('room_group', group_id=group_id))
 
@@ -292,7 +289,12 @@ def handle_disconnect():
                 if user:
                     user.last_seen = get_waktu_wita()
                     db.session.commit()
-                    socketio.emit('user_status_change', {'user_id': u_id, 'status': 'offline', 'last_seen': user.last_seen.strftime("%d/%m/%Y %H:%M")})
+                    # Broadcast status offline instan beserta waktu terakhir online
+                    socketio.emit('user_status_change', {
+                        'user_id': u_id, 
+                        'status': 'offline', 
+                        'last_seen': user.last_seen.strftime("%d/%m/%Y %H:%M")
+                    })
 
 @socketio.on('kirim_pesan_private')
 def handle_private_message(data):
@@ -305,6 +307,7 @@ def handle_private_message(data):
         with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
         pesan_teks = filename
 
+    # Cek apakah penerima benar-benar online. Jika offline, diterima = False (Centang 1)
     is_online = user_connections.get(receiver_id, 0) > 0
     pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe, diterima=is_online, dibaca=False)
     db.session.add(pesan_baru)

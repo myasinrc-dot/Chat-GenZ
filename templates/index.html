@@ -46,7 +46,6 @@
         </div>
     </div>
 
-    <!-- Modal Edit Profil -->
     <div id="modalProfil">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Edit Profil Anda</h3>
@@ -62,7 +61,6 @@
     </div>
 
     <div class="container">
-        <!-- Box Kontak & Invite -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Tambah Teman (Invite PIN)</h3>
             <form action="/add_contact" method="POST">
@@ -87,7 +85,6 @@
             </ul>
         </div>
 
-        <!-- Box Grup Chat -->
         <div class="box">
             <h3 style="margin-top: 0; color: #333;">Grup Chat</h3>
             <form action="/create_group" method="POST">
@@ -139,7 +136,6 @@
             }
         });
 
-        // Real-time update foto profil teman tanpa refresh
         socket.on('profile_updated', data => {
             if (data.user_id == currentUserId) {
                 document.getElementById('myName').innerText = data.nama;
@@ -179,16 +175,6 @@
                     playSound();
                 }
             }
-        });
-
-        socket.on('reset_badge', data => {
-            const badge = document.getElementById('badge-private-' + data.target_id);
-            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
-        });
-
-        socket.on('reset_badge_group', data => {
-            const badge = document.getElementById('badge-group-' + data.group_id);
-            if (badge) { badge.style.display = 'none'; badge.innerText = '0'; }
         });
     </script>
 </body>

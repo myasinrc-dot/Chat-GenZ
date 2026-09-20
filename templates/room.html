@@ -19,11 +19,10 @@
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0; }
         .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
         
-        /* Efek Upload Preview */
         .image-uploading { opacity: 0.6; filter: blur(2px); }
         .uploading-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
 
-        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; }
+        .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 4px; }
         
         .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center; flex-shrink: 0; }
         .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
@@ -58,7 +57,6 @@
         {% endif %}
     </div>
     
-    <!-- MODAL SETELAN GRUP -->
     <div id="modalGrup">
         <div class="modal-content">
             <h3 style="margin-top: 0; color: #075e54;">Setelan Grup</h3>
@@ -95,7 +93,18 @@
 
         const inputPesan = document.getElementById('inputPesan'), btnKirim = document.getElementById('btnKirim'), boxChat = document.getElementById('boxChat'), targetStatus = document.getElementById('targetStatus');
 
-        // Muat Riwayat Chat Awal
+        function playSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(); osc.stop(ctx.currentTime + 0.15);
+            } catch (e) {}
+        }
+
+        // Muat Riwayat Chat
         fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
             .then(r => r.json()).then(data => data.forEach(chatType === 'private' ? renderPrivate : renderGroup));
 
@@ -113,9 +122,24 @@
         }
 
         btnKirim.onclick = function() {
-            if (inputPesan.value.trim() !== '') {
+            const pesanVal = inputPesan.value.trim();
+            if (pesanVal !== '') {
+                // RENDER LOKAL SEBELUM DIKIRIM (Solusi agar pesan tetap tercatat saat offline/tanpa internet)
+                const dummyChat = {
+                    id: 'local_' + Date.now(),
+                    sender_id: currentUserId,
+                    receiver_id: chatType === 'private' ? targetId : null,
+                    group_id: chatType === 'group' ? targetId : null,
+                    pesan: pesanVal,
+                    tipe: 'text',
+                    diterima: false,
+                    dibaca: false
+                };
+                if(chatType === 'private') renderPrivate(dummyChat);
+                else renderGroup(dummyChat);
+
                 socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
-                    sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: inputPesan.value, tipe: 'text'
+                    sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: pesanVal, tipe: 'text'
                 });
                 inputPesan.value = '';
                 stopTypingEmit();
@@ -129,16 +153,20 @@
                 reader.onload = e => {
                     const base64Data = e.target.result;
                     
-                    // Render preview lokal sementara dengan status "Mengirim..."
-                    const tempId = 'temp_' + Date.now();
-                    const li = document.createElement('li');
-                    li.id = tempId;
-                    li.classList.add('chat-saya');
-                    li.innerHTML = `<div style="position:relative;"><img src="${base64Data}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
-                    boxChat.appendChild(li);
-                    boxChat.scrollTop = boxChat.scrollHeight;
+                    const dummyChat = {
+                        id: 'local_' + Date.now(),
+                        sender_id: currentUserId,
+                        receiver_id: chatType === 'private' ? targetId : null,
+                        group_id: chatType === 'group' ? targetId : null,
+                        pesan: base64Data,
+                        tipe: 'image',
+                        diterima: false,
+                        dibaca: false,
+                        is_uploading: true
+                    };
+                    if(chatType === 'private') renderPrivate(dummyChat);
+                    else renderGroup(dummyChat);
 
-                    // Kirim ke server
                     socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
                         sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: base64Data, tipe: 'image'
                     });
@@ -186,15 +214,26 @@
             }
         });
         
-        // ---- FIX BUG: PENGECEKAN KONDISI SOCKET PRIVATE CHAT YANG KETAT ----
+        // ---- NOTIFIKASI UNIVERSAL (Selalu bunyi & muncul di room manapun) ----
+        socket.on('notif_pesan_baru', data => {
+            if (chatType === 'private' && data.sender_id == targetId) return; // Jika sedang di room dia, jangan anggap unread
+            playSound();
+        });
+
+        socket.on('notif_grup_baru', data => {
+            if (chatType === 'group' && data.group_id == targetId) return;
+            if (data.sender_id != currentUserId) playSound();
+        });
+
         socket.on('terima_pesan_private', data => {
             if (chatType !== 'private') return;
             if ((data.sender_id == targetId && data.receiver_id == currentUserId) || 
                 (data.sender_id == currentUserId && data.receiver_id == targetId)) {
                 
                 if (data.sender_id == currentUserId) {
-                    const temps = document.querySelectorAll('.image-uploading');
-                    if (temps.length > 0) temps[0].closest('li').remove();
+                    // Hapus pesan lokal dummy milik pengirim dan ganti dengan data valid dari server
+                    const localEls = document.querySelectorAll('.local-msg-pending');
+                    if (localEls.length > 0) localEls[localEls.length - 1].remove();
                 }
                 renderPrivate(data);
                 if (data.sender_id == targetId) {
@@ -203,13 +242,12 @@
             }
         });
 
-        // ---- FIX BUG: PENGECEKAN KONDISI SOCKET GROUP CHAT YANG KETAT ----
         socket.on('terima_pesan_grup', data => {
             if (chatType !== 'group') return;
             if (data.group_id == targetId) {
                 if (data.sender_id == currentUserId) {
-                    const temps = document.querySelectorAll('.image-uploading');
-                    if (temps.length > 0) temps[0].closest('li').remove();
+                    const localEls = document.querySelectorAll('.local-msg-pending');
+                    if (localEls.length > 0) localEls[localEls.length - 1].remove();
                 }
                 renderGroup(data);
             }
@@ -234,7 +272,18 @@
         function renderPrivate(chat) {
             const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
-            li.innerHTML = chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : chat.pesan;
+            if (String(chat.id).startsWith('local_')) li.classList.add('local-msg-pending');
+
+            let content = '';
+            if (chat.is_uploading) {
+                content = `<div style="position:relative;"><img src="${chat.pesan}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
+            } else if (chat.tipe === 'image') {
+                content = `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+            } else {
+                content = chat.pesan;
+            }
+
+            li.innerHTML = content;
             
             if (isSaya) {
                 let symbol = '✓', color = '#777', isRead = "false";
@@ -248,9 +297,21 @@
         function renderGroup(chat) {
             const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+            if (String(chat.id).startsWith('local_')) li.classList.add('local-msg-pending');
+
             let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
-            li.innerHTML = sender + (chat.tipe === 'image' ? `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">` : `<span>${chat.pesan}</span>`);
-            if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓✓</span></div>`;
+            
+            let content = '';
+            if (chat.is_uploading) {
+                content = `<div style="position:relative;"><img src="${chat.pesan}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
+            } else if (chat.tipe === 'image') {
+                content = `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+            } else {
+                content = `<span>${chat.pesan}</span>`;
+            }
+
+            li.innerHTML = sender + content;
+            if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓</span></div>`;
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
     </script>
