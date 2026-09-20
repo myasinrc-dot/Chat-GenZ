@@ -80,7 +80,13 @@ def generate_pin(length=8, is_group=False):
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    if 'user_id' in session: return redirect(url_for('chat'))
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        if user:
+            return redirect(url_for('chat'))
+        else:
+            session.clear()
+            
     if request.method == 'POST':
         nomor_hp = request.form.get('nomor_hp')
         user = User.query.filter_by(nomor_hp=nomor_hp).first()
@@ -97,7 +103,9 @@ def login():
 def chat():
     if 'user_id' not in session: return redirect(url_for('login'))
     user = User.query.get(session['user_id'])
-    if not user: return redirect(url_for('login'))
+    if not user: 
+        session.clear() # Membersihkan sesi yang tidak valid agar tidak blank/loop
+        return redirect(url_for('login'))
     
     daftar_teman = []
     for relasi in Contact.query.filter_by(user_id=user.id).all():
@@ -121,6 +129,11 @@ def chat():
 def room_private(friend_id):
     if 'user_id' not in session: return redirect(url_for('login'))
     user_id = session['user_id']
+    user_aktif = User.query.get(user_id)
+    if not user_aktif:
+        session.clear()
+        return redirect(url_for('login'))
+        
     teman = User.query.get(friend_id)
     if not teman: return redirect(url_for('chat'))
     
@@ -135,12 +148,17 @@ def room_private(friend_id):
 
     is_online = user_connections.get(friend_id, 0) > 0
     last_seen = "Online" if is_online else (teman.last_seen.strftime("%d/%m/%Y %H:%M") if teman.last_seen else "")
-    return render_template('room.html', user_aktif=User.query.get(user_id), target=teman, tipe='private', is_online=is_online, last_seen_str=last_seen)
+    return render_template('room.html', user_aktif=user_aktif, target=teman, tipe='private', is_online=is_online, last_seen_str=last_seen)
 
 @app.route('/room/group/<int:group_id>')
 def room_group(group_id):
     if 'user_id' not in session: return redirect(url_for('login'))
     user_id = session['user_id']
+    user_aktif = User.query.get(user_id)
+    if not user_aktif:
+        session.clear()
+        return redirect(url_for('login'))
+        
     grup = Group.query.get(group_id)
     member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
     if not grup or not member: return redirect(url_for('chat'))
@@ -166,7 +184,7 @@ def room_group(group_id):
         
         socketio.emit('group_read_updated', {'group_id': group_id, 'user_id': user_id}, room=f"group_{group_id}")
 
-    return render_template('room.html', user_aktif=User.query.get(user_id), target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
+    return render_template('room.html', user_aktif=user_aktif, target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
 
 @app.route('/get_messages/<int:friend_id>')
 def get_messages(friend_id):
@@ -231,6 +249,9 @@ def get_message_info(message_id):
 def update_profile():
     if 'user_id' not in session: return redirect(url_for('login'))
     user = User.query.get(session['user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
     nama_baru = request.form.get('nama')
     foto = request.files.get('foto')
     if nama_baru: user.nama = nama_baru
@@ -274,6 +295,10 @@ def add_contact():
     pin_teman = request.form.get('pin_teman')
     user_id = session['user_id']
     user_aktif = User.query.get(user_id)
+    if not user_aktif:
+        session.clear()
+        return redirect(url_for('login'))
+        
     teman = User.query.filter_by(pin=pin_teman).first()
     if teman and teman.id != user_id:
         if not Contact.query.filter_by(user_id=user_id, friend_id=teman.id).first():
