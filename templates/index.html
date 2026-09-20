@@ -11,6 +11,13 @@
         .sidebar-header { padding: 15px; background: #075e54; color: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
         .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; background: #fff; }
+        
+        /* Baris Instagram Status Notes */
+        .notes-bar { display: flex; gap: 12px; padding: 12px 15px; overflow-x: auto; background: #f8f9fa; border-bottom: 1px solid #eee; flex-shrink: 0; }
+        .note-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; min-width: 60px; text-align: center; }
+        .note-bubble { background: #ffffff; border: 1px solid #075e54; border-radius: 12px; padding: 4px 8px; font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 4px; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .note-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; }
+
         .chat-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .chat-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; cursor: pointer; }
         .chat-item:hover { background: #f5f5f5; }
@@ -49,6 +56,20 @@
             </div>
         </div>
 
+        <!-- FITUR 6: Instagram-style Status Notes Bar -->
+        <div class="notes-bar" id="notesBar">
+            <div class="note-item" onclick="document.getElementById('modalNote').style.display='flex'">
+                <div class="note-bubble" id="myNoteBubble">{{ my_note if my_note else '+ Catatan' }}</div>
+                <img src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="note-avatar">
+            </div>
+            {% for item in daftar_teman %}
+            <div class="note-item" id="note-user-{{ item.user.id }}" style="display: {% if item.note %}flex{% else %}none{% endif %};" onclick="window.location.href='/room/private/{{ item.user.id }}'">
+                <div class="note-bubble" id="note-bubble-{{ item.user.id }}">{{ item.note }}</div>
+                <img id="friend-note-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}" class="note-avatar">
+            </div>
+            {% endfor %}
+        </div>
+
         <ul class="chat-list">
             <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">CHAT PRIBADI</div>
             {% for item in daftar_teman %}
@@ -84,6 +105,19 @@
         <div>
             <h2>Selamat Datang di ChatGenz</h2>
             <p>Pilih ruang obrolan di sebelah kiri untuk mulai berkirim pesan.</p>
+        </div>
+    </div>
+
+    <!-- MODAL CATATAN (STATUS NOTE) -->
+    <div id="modalNote" class="modal">
+        <div class="modal-content">
+            <h3>Buat Catatan Status</h3>
+            <p style="font-size: 12px; color: #666;">Catatan ini akan muncul di atas foto profilmu selama 24 jam.</p>
+            <form action="/update_note" method="POST">
+                <input type="text" name="note" maxlength="60" placeholder="Berbagi pemikiran (Maks 60 Karakter)..." value="{{ my_note }}" required>
+                <button type="submit" class="btn">Bagikan</button>
+                <button type="button" onclick="document.getElementById('modalNote').style.display='none'" style="margin-top: 8px; width: 100%; background: #ccc; border:none; padding:8px; border-radius:4px; cursor:pointer;">Batal</button>
+            </form>
         </div>
     </div>
 
@@ -174,6 +208,24 @@
             }
         });
 
+        // Realtime update catatan status ala IG
+        socket.on('note_updated', data => {
+            if (data.user_id == currentUserId) {
+                document.getElementById('myNoteBubble').innerText = data.status_note ? data.status_note : '+ Catatan';
+            } else {
+                const noteItem = document.getElementById('note-user-' + data.user_id);
+                const noteBubble = document.getElementById('note-bubble-' + data.user_id);
+                if (noteItem && noteBubble) {
+                    if (data.status_note) {
+                        noteBubble.innerText = data.status_note;
+                        noteItem.style.display = 'flex';
+                    } else {
+                        noteItem.style.display = 'none';
+                    }
+                }
+            }
+        });
+
         socket.on('kontak_baru', data => {
             if (data && data.id && !document.getElementById('chat-friend-' + data.id)) {
                 const chatList = document.querySelector('.chat-list');
@@ -200,3 +252,4 @@
     </script>
 </body>
 </html>
+

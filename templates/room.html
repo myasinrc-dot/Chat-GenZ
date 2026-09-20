@@ -14,24 +14,34 @@
         .foto-profil { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #25d366; }
         
         #boxChat { list-style-type: none; padding: 15px; flex: 1; overflow-y: auto; margin: 0; display: flex; flex-direction: column; }
-        #boxChat li { padding: 8px 12px; margin-bottom: 10px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; position: relative; }
+        #boxChat li { padding: 8px 12px; margin-bottom: 12px; border-radius: 8px; max-width: 75%; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-break: break-word; display: table; position: relative; }
         .chat-saya { background-color: #dcf8c6; margin-left: auto; margin-right: 0; border-top-right-radius: 0; }
         .chat-teman { background-color: #ffffff; margin-left: 0; margin-right: auto; border-top-left-radius: 0; }
         .chat-image { max-width: 220px; max-height: 220px; border-radius: 6px; display: block; margin-bottom: 5px; cursor: pointer; }
         
-        .image-uploading { opacity: 0.6; filter: blur(2px); }
-        .uploading-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+        /* FITUR 2: UI Balas Pesan */
+        .reply-quote-box { background: rgba(0,0,0,0.06); border-left: 4px solid #075e54; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; cursor: pointer; }
+        .reply-preview-bar { display: none; background: #e0e0e0; padding: 6px 12px; font-size: 12px; border-left: 4px solid #075e54; align-items: center; justify-content: space-between; flex-shrink: 0; }
+
+        /* FITUR 1: UI Reaksi Emoji */
+        .reaction-bar-popup { display: none; position: absolute; top: -35px; left: 0; background: white; border-radius: 20px; padding: 2px 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; gap: 6px; }
+        .reaction-bar-popup span { cursor: pointer; font-size: 16px; transition: transform 0.1s; }
+        .reaction-bar-popup span:hover { transform: scale(1.3); }
+        .reaction-pills { display: flex; gap: 3px; position: absolute; bottom: -10px; right: 8px; background: white; border-radius: 10px; padding: 1px 5px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+
+        /* FITUR 5: UI View Once */
+        .view-once-btn { background: #075e54; color: white; border: none; padding: 8px 12px; border-radius: 15px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 
         .chat-info-meta { font-size: 11px; color: #777; float: right; margin-left: 10px; margin-top: 5px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
         
-        .input-group { display: flex; gap: 10px; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; align-items: center; flex-shrink: 0; }
-        .input-group input[type="text"] { flex: 1; padding: 12px; border: 1px solid #fff; border-radius: 20px; outline: none; }
-        .input-group label { font-size: 24px; cursor: pointer; padding: 0 5px; color: #128c7e; }
-        .input-group button { padding: 10px 20px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
+        .input-container { display: flex; flex-direction: column; background: #f0f0f0; border-top: 1px solid #ccc; flex-shrink: 0; }
+        .input-group { display: flex; gap: 8px; padding: 8px 10px; align-items: center; }
+        .input-group input[type="text"] { flex: 1; padding: 10px 14px; border: 1px solid #fff; border-radius: 20px; outline: none; }
+        .input-btn-icon { font-size: 20px; cursor: pointer; padding: 4px; color: #128c7e; border: none; background: none; }
+        .input-group button.btn-send { padding: 8px 16px; background: #128c7e; color: white; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
 
-        #modalGrup, #modalMsgInfo { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
+        #modalGrup, #modalMsgInfo, #modalViewOnceMedia { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; text-align: left; max-height: 80vh; overflow-y: auto; }
-        .modal-content input { margin-bottom: 12px; width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -56,145 +66,152 @@
         <button onclick="bukaModalGrup()" style="background: #128c7e; border: none; color: white; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer;">⚙️ Setelan</button>
         {% endif %}
     </div>
-    
-    <!-- MODAL SETELAN GRUP -->
-    <div id="modalGrup">
-        <div class="modal-content">
-            <h3 style="margin-top: 0; color: #075e54;">Setelan Grup</h3>
-            <form action="/update_group/{{ target.id }}" method="POST" enctype="multipart/form-data">
-                <label style="font-size: 13px; font-weight: bold;">Nama Grup:</label>
-                <input type="text" name="nama_grup" value="{{ target.nama_grup if tipe == 'group' else '' }}" required>
-                <label style="font-size: 13px; font-weight: bold;">Foto Grup Baru:</label>
-                <input type="file" name="foto" accept="image/*" style="border: 1px dashed #ccc; padding: 5px; margin-bottom: 12px;">
-                <button type="submit" style="width: 100%; padding: 10px; background: #128c7e; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Simpan Perubahan</button>
-            </form>
-
-            <h4 style="margin: 15px 0 5px 0; color: #333; font-size: 14px;">Daftar Anggota Grup:</h4>
-            <ul id="listAnggota" style="list-style: none; padding: 0; margin: 0; font-size: 13px; color: #555;">
-                <li>Memuat anggota...</li>
-            </ul>
-
-            <button onclick="document.getElementById('modalGrup').style.display='none'" style="width: 100%; padding: 8px; margin-top: 15px; background: #ccc; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Tutup</button>
-        </div>
-    </div>
-
-    <!-- MODAL INFO PESAN GRUP -->
-    <div id="modalMsgInfo">
-        <div class="modal-content">
-            <h3 style="margin-top: 0; color: #075e54;">Info Pesan</h3>
-            <div id="msgInfoContent">Memuat...</div>
-            <button onclick="document.getElementById('modalMsgInfo').style.display='none'" style="width: 100%; padding: 8px; margin-top: 15px; background: #ccc; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">Tutup</button>
-        </div>
-    </div>
 
     <ul id="boxChat"></ul>
     
-    <div class="input-group">
-        <label for="inputGambar">📷</label>
-        <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
-        <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
-        <button id="btnKirim">Kirim</button>
+    <div class="input-container">
+        <!-- Preview Balas Pesan -->
+        <div id="replyPreviewBar" class="reply-preview-bar">
+            <div>
+                <strong id="replyPreviewSender" style="color:#075e54;">~ Nama</strong>
+                <div id="replyPreviewText" style="color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px;">Isi pesan...</div>
+            </div>
+            <button onclick="batalReply()" style="background:none; border:none; color:#777; font-weight:bold; cursor:pointer;">✕</button>
+        </div>
+
+        <div class="input-group">
+            <label for="inputGambar" class="input-btn-icon" title="Kirim Gambar">📷</label>
+            <input type="file" id="inputGambar" accept="image/*" style="display: none;" onchange="kirimGambar(this)">
+            
+            <!-- FITUR 3: Tombol Voice Note -->
+            <button id="btnMic" class="input-btn-icon" title="Rekam Pesan Suara">🎤</button>
+            
+            <!-- FITUR 5: Toggle Pesan Sekali Lihat -->
+            <button id="btnViewOnce" class="input-btn-icon" onclick="toggleViewOnce()" title="Pesan Sekali Lihat (View Once)" style="border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-size:14px; border:1px solid #128c7e;">1️⃣</button>
+
+            <input type="text" id="inputPesan" placeholder="Ketik pesan..." autocomplete="off" oninput="handleTyping()">
+            <button id="btnKirim" class="btn-send">Kirim</button>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP VIEW ONCE -->
+    <div id="modalViewOnceMedia">
+        <div class="modal-content" style="text-align:center; max-width:300px;">
+            <h4 style="margin-top:0;">Pesan Sekali Lihat</h4>
+            <div id="viewOnceContainer" style="margin:15px 0;"></div>
+            <button onclick="tutupViewOnceModal()" style="width:100%; padding:8px; background:#075e54; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL SETELAN GRUP & INFO PESAN -->
+    <div id="modalGrup">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#075e54;">Setelan Grup</h3>
+            <form action="/update_group/{{ target.id }}" method="POST" enctype="multipart/form-data">
+                <label style="font-size:13px; font-weight:bold;">Nama Grup:</label>
+                <input type="text" name="nama_grup" value="{{ target.nama_grup if tipe == 'group' else '' }}" required style="width:100%; margin-bottom:10px; padding:6px;">
+                <label style="font-size:13px; font-weight:bold;">Foto Grup Baru:</label>
+                <input type="file" name="foto" accept="image/*" style="margin-bottom:12px;">
+                <button type="submit" style="width:100%; padding:8px; background:#128c7e; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Simpan Perubahan</button>
+            </form>
+            <h4 style="margin:15px 0 5px 0; color:#333;">Daftar Anggota:</h4>
+            <ul id="listAnggota" style="list-style:none; padding:0; margin:0; font-size:13px;"></ul>
+            <button onclick="document.getElementById('modalGrup').style.display='none'" style="width:100%; padding:8px; margin-top:15px; background:#ccc; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
+        </div>
+    </div>
+
+    <div id="modalMsgInfo">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:#075e54;">Info Pesan</h3>
+            <div id="msgInfoContent">Memuat...</div>
+            <button onclick="document.getElementById('modalMsgInfo').style.display='none'" style="width:100%; padding:8px; margin-top:15px; background:#ccc; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Tutup</button>
+        </div>
     </div>
 
     <script>
         const currentUserId = "{{ user_aktif.id }}", currentUserName = "{{ user_aktif.nama }}", chatType = "{{ tipe }}", targetId = "{{ target.id }}";
-        let typingTimer = null, activeInfoMsgId = null;
+        let typingTimer = null, activeInfoMsgId = null, selectedReply = null, isViewOnceActive = false;
+        let mediaRecorder = null, audioChunks = [];
+
         var socket = io({ path: '/socket.io', transports: ['websocket'], query: { user_id: currentUserId }});
-
         const inputPesan = document.getElementById('inputPesan'), btnKirim = document.getElementById('btnKirim'), boxChat = document.getElementById('boxChat'), targetStatus = document.getElementById('targetStatus');
-
-        function playSound() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime);
-                gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.start(); osc.stop(ctx.currentTime + 0.15);
-            } catch (e) {}
-        }
 
         function formatWaktuLokal(isoString) {
             if (!isoString) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-            const date = new Date(isoString);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        function bukaInfoPesan(msgId) {
-            if (chatType !== 'group' || String(msgId).startsWith('local_')) return;
-            activeInfoMsgId = msgId;
-            document.getElementById('modalMsgInfo').style.display = 'flex';
-            loadMessageInfoData(msgId);
+        // FITUR 5: View Once Toggle
+        function toggleViewOnce() {
+            isViewOnceActive = !isViewOnceActive;
+            const btn = document.getElementById('btnViewOnce');
+            btn.style.background = isViewOnceActive ? '#25d366' : 'none';
+            btn.style.color = isViewOnceActive ? 'white' : '#128c7e';
         }
 
-        function loadMessageInfoData(msgId) {
-            document.getElementById('msgInfoContent').innerHTML = 'Memuat info pesan...';
-            fetch('/get_message_info/' + msgId)
-                .then(r => r.json())
-                .then(data => {
-                    let html = '<h4 style="margin:5px 0; color:#333;">Dibaca oleh:</h4>';
-                    if (data.read_by && data.read_by.length > 0) {
-                        data.read_by.forEach(r => {
-                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓✓ <b>${r.nama}</b> <br><span style="color:#888; font-size:11px;">Dibaca pukul: ${r.waktu}</span></div>`;
-                        });
-                    } else {
-                        html += '<div style="font-size:13px; color:#888;">Belum ada yang membaca</div>';
-                    }
-
-                    html += '<h4 style="margin:15px 0 5px 0; color:#333;">Terkirim ke (Belum Dibaca):</h4>';
-                    if (data.delivered_to && data.delivered_to.length > 0) {
-                        data.delivered_to.forEach(d => {
-                            html += `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #eee;">✓ <b>${d.nama}</b></div>`;
-                        });
-                    } else {
-                        html += '<div style="font-size:13px; color:#888;">Semua anggota sudah membaca pesan ini</div>';
-                    }
-                    document.getElementById('msgInfoContent').innerHTML = html;
-                });
+        // FITUR 2: Set Reply Target
+        function setReplyTarget(msgId, senderName, textSnippet) {
+            selectedReply = { id: msgId, sender_name: senderName, text: textSnippet };
+            document.getElementById('replyPreviewSender').innerText = '~ ' + senderName;
+            document.getElementById('replyPreviewText').innerText = textSnippet;
+            document.getElementById('replyPreviewBar').style.display = 'flex';
+        }
+        function batalReply() {
+            selectedReply = null;
+            document.getElementById('replyPreviewBar').style.display = 'none';
         }
 
-        fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
-            .then(r => r.json()).then(data => {
-                data.forEach(chatType === 'private' ? renderPrivate : renderGroup);
-                if (chatType === 'group') {
-                    socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
+        // FITUR 1: Toggle Reaction
+        function sendReaction(msgId, emoji) {
+            socket.emit('toggle_reaction', { message_id: msgId, user_id: currentUserId, emoji: emoji });
+        }
+
+        // FITUR 3: Voice Note Recorder
+        const btnMic = document.getElementById('btnMic');
+        btnMic.onclick = async function() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                btnMic.style.color = "#128c7e";
+                btnMic.innerText = "🎤";
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                            socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
+                                sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId,
+                                pesan: e.target.result, tipe: 'audio', reply_to_id: selectedReply ? selectedReply.id : null, is_view_once: isViewOnceActive
+                            });
+                            batalReply();
+                            if(isViewOnceActive) toggleViewOnce();
+                        };
+                        reader.readAsDataURL(blob);
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    mediaRecorder.start();
+                    btnMic.style.color = "red";
+                    btnMic.innerText = "⏹️";
+                } catch(err) {
+                    alert("Akses mikrofon ditolak atau tidak didukung browser.");
                 }
-            });
-
-        function bukaModalGrup() {
-            document.getElementById('modalGrup').style.display = 'flex';
-            fetch('/get_group_members/' + targetId)
-                .then(r => r.json())
-                .then(members => {
-                    const listEl = document.getElementById('listAnggota');
-                    listEl.innerHTML = '';
-                    members.forEach(m => {
-                        listEl.innerHTML += `<li style="padding: 5px 0; border-bottom: 1px solid #eee;">👤 ${m.nama} <span style="color:#888; font-size:11px;">(PIN: ${m.pin})</span></li>`;
-                    });
-                });
-        }
+            }
+        };
 
         btnKirim.onclick = function() {
             const pesanVal = inputPesan.value.trim();
             if (pesanVal !== '') {
-                const dummyChat = {
-                    id: 'local_' + Date.now(),
-                    sender_id: currentUserId,
-                    receiver_id: chatType === 'private' ? targetId : null,
-                    group_id: chatType === 'group' ? targetId : null,
-                    pesan: pesanVal,
-                    tipe: 'text',
-                    diterima: false,
-                    dibaca: false,
-                    waktu: new Date().toISOString()
-                };
-                if(chatType === 'private') renderPrivate(dummyChat);
-                else renderGroup(dummyChat);
-
                 socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
-                    sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: pesanVal, tipe: 'text'
+                    sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId,
+                    pesan: pesanVal, tipe: 'text', reply_to_id: selectedReply ? selectedReply.id : null, is_view_once: isViewOnceActive
                 });
                 inputPesan.value = '';
+                batalReply();
+                if(isViewOnceActive) toggleViewOnce();
                 stopTypingEmit();
             }
         };
@@ -204,29 +221,146 @@
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = e => {
-                    const base64Data = e.target.result;
-                    const dummyChat = {
-                        id: 'local_' + Date.now(),
-                        sender_id: currentUserId,
-                        receiver_id: chatType === 'private' ? targetId : null,
-                        group_id: chatType === 'group' ? targetId : null,
-                        pesan: base64Data,
-                        tipe: 'image',
-                        diterima: false,
-                        dibaca: false,
-                        is_uploading: true,
-                        waktu: new Date().toISOString()
-                    };
-                    if(chatType === 'private') renderPrivate(dummyChat);
-                    else renderGroup(dummyChat);
-
                     socket.emit(chatType === 'private' ? 'kirim_pesan_private' : 'kirim_pesan_grup', {
-                        sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId, pesan: base64Data, tipe: 'image'
+                        sender_id: currentUserId, [chatType === 'private' ? 'receiver_id' : 'group_id']: targetId,
+                        pesan: e.target.result, tipe: 'image', reply_to_id: selectedReply ? selectedReply.id : null, is_view_once: isViewOnceActive
                     });
+                    batalReply();
+                    if(isViewOnceActive) toggleViewOnce();
                 };
                 reader.readAsDataURL(input.files[0]);
                 input.value = '';
             }
+        }
+
+        // Buka Pesan Sekali Lihat (View Once)
+        function bukaViewOnce(msgId) {
+            socket.emit('open_view_once', { message_id: msgId });
+        }
+
+        socket.on('view_once_opened', data => {
+            const msgEl = document.getElementById('msg-body-' + data.message_id);
+            if (data.pesan && (data.message_id == activeViewOnceMsgId)) {
+                const container = document.getElementById('viewOnceContainer');
+                if (data.tipe === 'image') {
+                    container.innerHTML = `<img src="/static/uploads/${data.pesan}" style="max-width:100%; border-radius:8px;">`;
+                } else if (data.tipe === 'audio') {
+                    container.innerHTML = `<audio controls autoplay src="/static/uploads/${data.pesan}"></audio>`;
+                } else {
+                    container.innerHTML = `<p style="font-size:16px;">${data.pesan}</p>`;
+                }
+                document.getElementById('modalViewOnceMedia').style.display = 'flex';
+            }
+            if (msgEl) {
+                msgEl.innerHTML = `<span style="font-style:italic; color:#888;">🔒 Pesan Sekali Lihat (Sudah Dibuka)</span>`;
+            }
+        });
+
+        let activeViewOnceMsgId = null;
+        function triggerOpenViewOnce(msgId) {
+            activeViewOnceMsgId = msgId;
+            bukaViewOnce(msgId);
+        }
+        function tutupViewOnceModal() {
+            document.getElementById('modalViewOnceMedia').style.display = 'none';
+            document.getElementById('viewOnceContainer').innerHTML = '';
+        }
+
+        socket.on('reaction_updated', data => {
+            const rxEl = document.getElementById('reactions-' + data.message_id);
+            if (rxEl) {
+                rxEl.innerHTML = data.reactions.map(r => r.emoji).join(' ');
+                rxEl.style.display = data.reactions.length > 0 ? 'flex' : 'none';
+            }
+        });
+
+        fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
+            .then(r => r.json()).then(data => {
+                data.forEach(renderMessage);
+                if (chatType === 'group') socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
+            });
+
+        socket.on('terima_pesan_private', data => {
+            if (chatType === 'private' && ((data.sender_id == targetId && data.receiver_id == currentUserId) || (data.sender_id == currentUserId && data.receiver_id == targetId))) {
+                renderMessage(data);
+                if (data.sender_id == targetId) socket.emit('pesan_terbaca_langsung', { message_id: data.id });
+            }
+        });
+
+        socket.on('terima_pesan_grup', data => {
+            if (chatType === 'group' && data.group_id == targetId) {
+                renderMessage(data);
+                socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
+            }
+        });
+
+        function renderMessage(chat) {
+            const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
+            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
+            li.id = 'msg-item-' + chat.id;
+
+            // Bar Popup Reaksi Emoji
+            let rxPopup = `<div class="reaction-bar-popup" id="rx-popup-${chat.id}">
+                <span onclick="sendReaction('${chat.id}', '❤️')">❤️</span>
+                <span onclick="sendReaction('${chat.id}', '😂')">😂</span>
+                <span onclick="sendReaction('${chat.id}', '😮')">😮</span>
+                <span onclick="sendReaction('${chat.id}', '😢')">😢</span>
+                <span onclick="sendReaction('${chat.id}', '👍')">👍</span>
+            </div>`;
+
+            // Kutipan Reply
+            let replyHtml = '';
+            if (chat.reply_to) {
+                replyHtml = `<div class="reply-quote-box"><strong>~ ${chat.reply_to.sender_name}</strong>: ${chat.reply_to.pesan}</div>`;
+            }
+
+            // Pengirim (di grup)
+            let senderHtml = (!isSaya && chatType === 'group') ? `<div style="font-size:11px; font-weight:bold; color:#075e54; margin-bottom:2px;">~ ${chat.sender_name}</div>` : '';
+
+            // Konten Pesan
+            let bodyHtml = `<div id="msg-body-${chat.id}">`;
+            if (chat.is_view_once) {
+                if (chat.is_opened || chat.pesan === 'opened') {
+                    bodyHtml += `<span style="font-style:italic; color:#888;">🔒 Pesan Sekali Lihat (Sudah Dibuka)</span>`;
+                } else if (isSaya) {
+                    bodyHtml += `<span style="font-style:italic; color:#555;">🔒 Pesan Sekali Lihat (Belum Dibuka)</span>`;
+                } else {
+                    bodyHtml += `<button class="view-once-btn" onclick="triggerOpenViewOnce('${chat.id}')">👁️ Buka Pesan Sekali Lihat</button>`;
+                }
+            } else if (chat.tipe === 'image') {
+                bodyHtml += `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
+            } else if (chat.tipe === 'audio') {
+                bodyHtml += `<audio controls src="/static/uploads/${chat.pesan}" style="max-width:200px; height:35px;"></audio>`;
+            } else {
+                bodyHtml += `<span>${chat.pesan}</span>`;
+            }
+            bodyHtml += `</div>`;
+
+            // Tombol Akses Cepat Reply
+            let btnReplyShort = `<button onclick="setReplyTarget('${chat.id}', '${chat.sender_name}', '${chat.tipe === 'text' ? chat.pesan : chat.tipe}')" style="background:none; border:none; color:#888; cursor:pointer; font-size:11px; margin-left:5px;">↩️</button>`;
+
+            // Pills Reaksi Emoji
+            let rxPills = `<div class="reaction-pills" id="reactions-${chat.id}" style="display:${chat.reactions && chat.reactions.length > 0 ? 'flex' : 'none'};">${chat.reactions ? chat.reactions.map(r => r.emoji).join(' ') : ''}</div>`;
+
+            const jamStr = formatWaktuLokal(chat.waktu);
+            let metaHtml = `<div class="chat-info-meta"><span>${jamStr}</span>${btnReplyShort}`;
+            if (isSaya) {
+                let symbol = chat.dibaca ? '✓✓' : (chat.diterima ? '✓✓' : '✓');
+                let color = chat.dibaca ? '#34b7f1' : '#777';
+                metaHtml += `<span id="centang-${chat.id}" style="color:${color}; font-weight:bold;">${symbol}</span>`;
+            }
+            metaHtml += `</div>`;
+
+            li.innerHTML = rxPopup + senderHtml + replyHtml + bodyHtml + metaHtml + rxPills;
+            
+            // Toggle Popup Reaksi saat Klik Kanan / Tahan Lamba
+            li.oncontextmenu = function(e) {
+                e.preventDefault();
+                const pop = document.getElementById('rx-popup-' + chat.id);
+                pop.style.display = pop.style.display === 'flex' ? 'none' : 'flex';
+            };
+
+            boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
 
         function handleTyping() {
@@ -242,156 +376,12 @@
             });
         }
 
-        socket.on('status_typing', data => {
-            if (chatType === 'private' && data.sender_id == targetId) targetStatus.innerText = data.is_typing ? "sedang mengetik..." : "Online";
-        });
-        socket.on('status_typing_group', data => {
-            if (chatType === 'group' && data.sender_id != currentUserId) targetStatus.innerText = data.is_typing ? `${data.sender_name} sedang mengetik...` : "Grup Chat";
-        });
-        socket.on('user_status_change', data => {
-            if (chatType === 'private' && data.user_id == targetId) targetStatus.innerText = data.status === 'online' ? "Online" : data.last_seen;
-        });
-        socket.on('profile_updated', data => {
-            if (chatType === 'private' && data.user_id == targetId) {
-                document.getElementById('headerTitle').innerText = data.nama;
-                document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
-            }
-        });
-        socket.on('group_info_updated', data => {
-            if (chatType === 'group' && data.group_id == targetId) {
-                document.getElementById('headerTitle').innerText = data.nama_grup;
-                document.getElementById('headerAvatar').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama_grup}&background=075e54&color=fff` : `/static/uploads/${data.foto_profil}`;
-            }
-        });
-        socket.on('notif_pesan_baru', data => {
-            if (chatType === 'private' && data.sender_id == targetId) return;
-            playSound();
-        });
-        socket.on('notif_grup_baru', data => {
-            if (chatType === 'group' && data.group_id == targetId) return;
-            if (data.sender_id != currentUserId) playSound();
-        });
-        socket.on('sync_offline_notifications', () => {
-            playSound();
-            setTimeout(() => location.reload(), 1000);
-        });
-
-        socket.on('terima_pesan_private', data => {
-            if (chatType !== 'private') return;
-            if ((data.sender_id == targetId && data.receiver_id == currentUserId) || 
-                (data.sender_id == currentUserId && data.receiver_id == targetId)) {
-                
-                if (data.sender_id == currentUserId) {
-                    const localEls = document.querySelectorAll('.local-msg-pending');
-                    if (localEls.length > 0) localEls[localEls.length - 1].remove();
-                }
-                renderPrivate(data);
-                if (data.sender_id == targetId) {
-                    socket.emit('pesan_terbaca_langsung', { message_id: data.id });
-                }
-            }
-        });
-
-        socket.on('terima_pesan_grup', data => {
-            if (chatType !== 'group') return;
-            if (data.group_id == targetId) {
-                if (data.sender_id == currentUserId) {
-                    const localEls = document.querySelectorAll('.local-msg-pending');
-                    if (localEls.length > 0) localEls[localEls.length - 1].remove();
-                }
-                renderGroup(data);
-                socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
-            }
-        });
-
-        socket.on('status_diterima', data => {
-            const el = document.getElementById('centang-' + data.message_id);
-            if (el && el.dataset.dibaca === "false") { el.innerHTML = '✓✓'; el.style.color = '#777'; }
-        });
-
+        socket.on('status_typing', data => { if (chatType === 'private' && data.sender_id == targetId) targetStatus.innerText = data.is_typing ? "sedang mengetik..." : "Online"; });
+        socket.on('status_typing_group', data => { if (chatType === 'group' && data.sender_id != currentUserId) targetStatus.innerText = data.is_typing ? `${data.sender_name} sedang mengetik...` : "Grup Chat"; });
         socket.on('pesan_dibaca', data => {
-            if (chatType === 'private' && data.reader_id == targetId) {
-                if(data.message_id) {
-                    const el = document.getElementById('centang-' + data.message_id);
-                    if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; el.dataset.dibaca = "true"; }
-                }
-            }
+            const el = document.getElementById('centang-' + data.message_id);
+            if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; }
         });
-
-        socket.on('group_msg_read_all', data => {
-            if (chatType === 'group' && data.group_id == targetId) {
-                const el = document.querySelector(`.group-centang[data-msg-id="${data.message_id}"]`);
-                if (el) { el.innerHTML = '✓✓'; el.style.color = '#34b7f1'; }
-            }
-        });
-
-        socket.on('group_read_updated', data => {
-            if (chatType === 'group' && data.group_id == targetId) {
-                if (activeInfoMsgId && document.getElementById('modalMsgInfo').style.display === 'flex') {
-                    loadMessageInfoData(activeInfoMsgId);
-                }
-            }
-        });
-
-        function renderPrivate(chat) {
-            const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
-            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
-            if (String(chat.id).startsWith('local_')) li.classList.add('local-msg-pending');
-
-            let content = '';
-            if (chat.is_uploading) {
-                content = `<div style="position:relative;"><img src="${chat.pesan}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
-            } else if (chat.tipe === 'image') {
-                content = `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
-            } else {
-                content = chat.pesan;
-            }
-
-            li.innerHTML = content;
-            const jamStr = formatWaktuLokal(chat.waktu);
-            
-            if (isSaya) {
-                let symbol = '🕒', color = '#777', isRead = "false";
-                if (chat.dibaca) { symbol = '✓✓'; color = '#34b7f1'; isRead = "true"; }
-                else if (chat.diterima) { symbol = '✓✓'; }
-                else if (String(chat.id).startsWith('local_')) { symbol = '🕒'; }
-                else { symbol = '✓'; }
-
-                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
-            } else {
-                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
-            }
-            boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
-        }
-
-        function renderGroup(chat) {
-            const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
-            li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
-            if (String(chat.id).startsWith('local_')) li.classList.add('local-msg-pending');
-
-            let sender = !isSaya ? `<div style="font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px;">~ ${chat.sender_name}</div>` : '';
-            
-            let content = '';
-            if (chat.is_uploading) {
-                content = `<div style="position:relative;"><img src="${chat.pesan}" class="chat-image image-uploading"><div class="uploading-badge">Mengirim...</div></div>`;
-            } else if (chat.tipe === 'image') {
-                content = `<img src="/static/uploads/${chat.pesan}" class="chat-image" onclick="window.open(this.src)">`;
-            } else {
-                content = `<span>${chat.pesan}</span>`;
-            }
-
-            li.innerHTML = sender + content;
-            const jamStr = formatWaktuLokal(chat.waktu);
-
-            if (isSaya) {
-                let tickColor = chat.is_read_all ? '#34b7f1' : '#777';
-                let symbol = String(chat.id).startsWith('local_') ? '🕒' : '✓✓';
-                li.innerHTML += `<div class="chat-info-meta" onclick="bukaInfoPesan('${chat.id}')" title="Klik untuk lihat rincian pembaca"><span>${jamStr}</span><span class="group-centang" data-msg-id="${chat.id}" style="color: ${tickColor}; font-weight: bold;">${symbol}</span></div>`;
-            } else {
-                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
-            }
-            boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
-        }
     </script>
 </body>
 </html>

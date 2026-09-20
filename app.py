@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'kunci_rahasia_bebas_123'
@@ -32,6 +33,8 @@ class User(db.Model):
     nama = db.Column(db.String(50), default='Pengguna Baru')
     foto_profil = db.Column(db.String(120), default='default.png')
     last_seen = db.Column(db.DateTime, default=get_waktu_wita)
+    status_note = db.Column(db.String(60), nullable=True)
+    note_expires_at = db.Column(db.DateTime, nullable=True)
 
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -57,10 +60,13 @@ class Message(db.Model):
     receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
     pesan = db.Column(db.Text, nullable=False)
-    tipe = db.Column(db.String(10), default='text')
+    tipe = db.Column(db.String(10), default='text') # text, image, audio
     waktu = db.Column(db.DateTime, default=get_waktu_wita)
     diterima = db.Column(db.Boolean, default=False)
     dibaca = db.Column(db.Boolean, default=False)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
+    is_view_once = db.Column(db.Boolean, default=False)
+    is_opened = db.Column(db.Boolean, default=False)
 
 class MessageRead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -68,8 +74,33 @@ class MessageRead(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     read_at = db.Column(db.DateTime, default=get_waktu_wita)
 
+class Reaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    emoji = db.Column(db.String(10), nullable=False)
+
+# Auto Migration untuk Menambah Kolom Baru Secara Aman Tanpa Menghapus Data
 with app.app_context():
     db.create_all()
+    engine = db.engine
+    inspector = inspect(engine)
+    
+    user_cols = [c['name'] for c in inspector.get_columns('user')]
+    with engine.connect() as conn:
+        if 'status_note' not in user_cols:
+            conn.execute(text("ALTER TABLE user ADD COLUMN status_note VARCHAR(60)"))
+        if 'note_expires_at' not in user_cols:
+            conn.execute(text("ALTER TABLE user ADD COLUMN note_expires_at DATETIME"))
+        
+        msg_cols = [c['name'] for c in inspector.get_columns('message')]
+        if 'reply_to_id' not in msg_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN reply_to_id INTEGER"))
+        if 'is_view_once' not in msg_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN is_view_once BOOLEAN DEFAULT 0"))
+        if 'is_opened' not in msg_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN is_opened BOOLEAN DEFAULT 0"))
+        conn.commit()
 
 def generate_pin(length=8, is_group=False):
     karakter = string.ascii_uppercase + string.digits
@@ -77,6 +108,46 @@ def generate_pin(length=8, is_group=False):
         kode = ''.join(random.choices(karakter, k=length))
         if not (Group.query.filter_by(kode_grup=kode).first() if is_group else User.query.filter_by(pin=kode).first()):
             return kode
+
+def format_message(p):
+    sender = User.query.get(p.sender_id)
+    reply_info = None
+    if p.reply_to_id:
+        parent = Message.query.get(p.reply_to_id)
+        if parent:
+            p_sender = User.query.get(parent.sender_id)
+            p_text = parent.pesan if not (parent.is_view_once and parent.is_opened) else "Pesan Sekali Lihat"
+            if parent.tipe == 'image': p_text = "📷 Foto"
+            elif parent.tipe == 'audio': p_text = "🎵 Pesan Suara"
+            reply_info = {
+                'id': parent.id,
+                'sender_name': p_sender.nama if p_sender else 'Pengguna',
+                'pesan': p_text
+            }
+            
+    reactions = Reaction.query.filter_by(message_id=p.id).all()
+    rx_list = [{'user_id': r.user_id, 'emoji': r.emoji} for r in reactions]
+    
+    pesan_content = p.pesan
+    if p.is_view_once and p.is_opened:
+        pesan_content = "opened"
+
+    return {
+        'id': p.id,
+        'sender_id': p.sender_id,
+        'sender_name': sender.nama if sender else 'Pengguna',
+        'receiver_id': p.receiver_id,
+        'group_id': p.group_id,
+        'pesan': pesan_content,
+        'tipe': p.tipe,
+        'waktu': p.waktu.isoformat(),
+        'diterima': p.diterima,
+        'dibaca': p.dibaca,
+        'reply_to': reply_info,
+        'is_view_once': p.is_view_once,
+        'is_opened': p.is_opened,
+        'reactions': rx_list
+    }
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -99,6 +170,9 @@ def chat():
     user = User.query.get(session['user_id'])
     if not user: return redirect(url_for('login'))
     
+    now = get_waktu_wita()
+    my_note = user.status_note if (user.note_expires_at and user.note_expires_at > now) else ""
+
     daftar_teman = []
     for relasi in Contact.query.filter_by(user_id=user.id).all():
         teman = User.query.get(relasi.friend_id)
@@ -106,7 +180,8 @@ def chat():
             unread = Message.query.filter_by(sender_id=teman.id, receiver_id=user.id, group_id=None, dibaca=False).count()
             is_online = user_connections.get(teman.id, 0) > 0
             last_seen = "Online" if is_online else (teman.last_seen.strftime("%d/%m/%Y %H:%M") if teman.last_seen else "")
-            daftar_teman.append({'user': teman, 'unread': unread, 'is_online': is_online, 'last_seen_str': last_seen})
+            friend_note = teman.status_note if (teman.note_expires_at and teman.note_expires_at > now) else ""
+            daftar_teman.append({'user': teman, 'unread': unread, 'is_online': is_online, 'last_seen_str': last_seen, 'note': friend_note})
 
     daftar_grup = []
     for m in GroupMember.query.filter_by(user_id=user.id).all():
@@ -115,7 +190,22 @@ def chat():
             unread = Message.query.filter(Message.group_id == g.id, Message.id > m.last_read_id).count()
             daftar_grup.append({'group': g, 'unread': unread})
 
-    return render_template('index.html', user_aktif=user, daftar_teman=daftar_teman, daftar_grup=daftar_grup)
+    return render_template('index.html', user_aktif=user, my_note=my_note, daftar_teman=daftar_teman, daftar_grup=daftar_grup)
+
+@app.route('/update_note', methods=['POST'])
+def update_note():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    user = User.query.get(session['user_id'])
+    note = request.form.get('note', '').strip()[:60]
+    user.status_note = note
+    user.note_expires_at = get_waktu_wita() + timedelta(hours=24) if note else None
+    db.session.commit()
+    
+    contacts = Contact.query.filter_by(user_id=user.id).all()
+    for c in contacts:
+        socketio.emit('note_updated', {'user_id': user.id, 'status_note': user.status_note}, room=f"user_{c.friend_id}")
+    socketio.emit('note_updated', {'user_id': user.id, 'status_note': user.status_note}, room=f"user_{user.id}")
+    return redirect(url_for('chat'))
 
 @app.route('/room/private/<int:friend_id>')
 def room_private(friend_id):
@@ -175,10 +265,7 @@ def get_messages(friend_id):
         ((Message.sender_id == user_id) & (Message.receiver_id == friend_id) & (Message.group_id == None)) |
         ((Message.sender_id == friend_id) & (Message.receiver_id == user_id) & (Message.group_id == None))
     ).order_by(Message.waktu.asc()).all()
-    return jsonify([{
-        'id': p.id, 'sender_id': p.sender_id, 'pesan': p.pesan, 'tipe': p.tipe, 
-        'diterima': p.diterima, 'dibaca': p.dibaca, 'waktu': p.waktu.isoformat()
-    } for p in pesan_list])
+    return jsonify([format_message(p) for p in pesan_list])
 
 @app.route('/get_group_messages/<int:group_id>')
 def get_group_messages(group_id):
@@ -186,12 +273,10 @@ def get_group_messages(group_id):
     total_members = GroupMember.query.filter_by(group_id=group_id).count()
     result = []
     for p in pesan_list:
+        fmt = format_message(p)
         read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= p.id).count()
-        is_read_all = (read_count >= total_members)
-        result.append({
-            'id': p.id, 'sender_id': p.sender_id, 'sender_name': User.query.get(p.sender_id).nama, 
-            'pesan': p.pesan, 'tipe': p.tipe, 'waktu': p.waktu.isoformat(), 'is_read_all': is_read_all
-        })
+        fmt['is_read_all'] = (read_count >= total_members)
+        result.append(fmt)
     return jsonify(result)
 
 @app.route('/get_group_members/<int:group_id>')
@@ -284,7 +369,8 @@ def add_contact():
             socketio.emit('kontak_baru', {
                 'id': user_aktif.id,
                 'nama': user_aktif.nama,
-                'foto_profil': user_aktif.foto_profil
+                'foto_profil': user_aktif.foto_profil,
+                'note': user_aktif.status_note if (user_aktif.note_expires_at and user_aktif.note_expires_at > get_waktu_wita()) else ""
             }, room=f"user_{teman.id}")
     return redirect(url_for('chat'))
 
@@ -364,7 +450,10 @@ def handle_disconnect():
 
 @socketio.on('kirim_pesan_private')
 def handle_private_message(data):
-    sender_id, receiver_id, pesan_teks, tipe = int(data['sender_id']), int(data['receiver_id']), data['pesan'], data.get('tipe', 'text')
+    sender_id, receiver_id = int(data['sender_id']), int(data['receiver_id'])
+    pesan_teks, tipe = data['pesan'], data.get('tipe', 'text')
+    reply_to_id = data.get('reply_to_id')
+    is_view_once = bool(data.get('is_view_once', False))
 
     if tipe == 'image' and 'base64,' in pesan_teks:
         header, encoded = pesan_teks.split("base64,", 1)
@@ -372,34 +461,32 @@ def handle_private_message(data):
         filename = f"img_{sender_id}_{int(datetime.utcnow().timestamp())}.{ext}"
         with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
         pesan_teks = filename
+    elif tipe == 'audio' and 'base64,' in pesan_teks:
+        _, encoded = pesan_teks.split("base64,", 1)
+        filename = f"audio_{sender_id}_{int(datetime.utcnow().timestamp())}.webm"
+        with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
+        pesan_teks = filename
 
     is_online = user_connections.get(receiver_id, 0) > 0
-    pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe, diterima=is_online, dibaca=False)
+    pesan_baru = Message(
+        sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe,
+        diterima=is_online, dibaca=False, reply_to_id=reply_to_id, is_view_once=is_view_once
+    )
     db.session.add(pesan_baru)
     db.session.commit()
     
-    chat_data = {
-        'id': pesan_baru.id, 'sender_id': sender_id, 'receiver_id': receiver_id, 
-        'pesan': pesan_teks, 'tipe': tipe, 'diterima': is_online, 'dibaca': False, 'waktu': pesan_baru.waktu.isoformat()
-    }
+    chat_data = format_message(pesan_baru)
     
     emit('terima_pesan_private', chat_data, room=f"user_{sender_id}")
     emit('terima_pesan_private', chat_data, room=f"user_{receiver_id}")
     emit('notif_pesan_baru', {'sender_id': sender_id}, room=f"user_{receiver_id}")
 
-@socketio.on('pesan_terbaca_langsung')
-def handle_read(data):
-    msg_id = data['message_id']
-    msg = Message.query.get(msg_id)
-    if msg:
-        msg.diterima = True
-        msg.dibaca = True
-        db.session.commit()
-        socketio.emit('pesan_dibaca', {'reader_id': msg.receiver_id, 'partner_id': msg.sender_id, 'message_id': msg_id}, room=f"user_{msg.sender_id}")
-
 @socketio.on('kirim_pesan_grup')
 def handle_group_message(data):
-    sender_id, group_id, pesan_teks, tipe = int(data['sender_id']), int(data['group_id']), data['pesan'], data.get('tipe', 'text')
+    sender_id, group_id = int(data['sender_id']), int(data['group_id'])
+    pesan_teks, tipe = data['pesan'], data.get('tipe', 'text')
+    reply_to_id = data.get('reply_to_id')
+    is_view_once = bool(data.get('is_view_once', False))
     
     if tipe == 'image' and 'base64,' in pesan_teks:
         header, encoded = pesan_teks.split("base64,", 1)
@@ -407,8 +494,16 @@ def handle_group_message(data):
         filename = f"gimg_{sender_id}_{int(datetime.utcnow().timestamp())}.{ext}"
         with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
         pesan_teks = filename
+    elif tipe == 'audio' and 'base64,' in pesan_teks:
+        _, encoded = pesan_teks.split("base64,", 1)
+        filename = f"gaudio_{sender_id}_{int(datetime.utcnow().timestamp())}.webm"
+        with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
+        pesan_teks = filename
 
-    pesan_baru = Message(sender_id=sender_id, group_id=group_id, pesan=pesan_teks, tipe=tipe)
+    pesan_baru = Message(
+        sender_id=sender_id, group_id=group_id, pesan=pesan_teks, tipe=tipe,
+        reply_to_id=reply_to_id, is_view_once=is_view_once
+    )
     db.session.add(pesan_baru)
     db.session.commit()
     
@@ -421,14 +516,62 @@ def handle_group_message(data):
         db.session.add(MessageRead(message_id=pesan_baru.id, user_id=sender_id))
         db.session.commit()
 
-    sender = User.query.get(sender_id)
-    chat_data = {
-        'id': pesan_baru.id, 'sender_id': sender_id, 'sender_name': sender.nama, 
-        'group_id': group_id, 'pesan': pesan_teks, 'tipe': tipe, 'waktu': pesan_baru.waktu.isoformat(), 'is_read_all': False
-    }
+    chat_data = format_message(pesan_baru)
     
     emit('terima_pesan_grup', chat_data, room=f"group_{group_id}")
     emit('notif_grup_baru', {'group_id': group_id, 'sender_id': sender_id}, room=f"group_{group_id}")
+
+@socketio.on('toggle_reaction')
+def handle_reaction(data):
+    msg_id = int(data['message_id'])
+    user_id = int(data['user_id'])
+    emoji = data['emoji']
+    
+    msg = Message.query.get(msg_id)
+    if not msg: return
+    
+    rx = Reaction.query.filter_by(message_id=msg_id, user_id=user_id).first()
+    if rx:
+        if rx.emoji == emoji:
+            db.session.delete(rx)
+        else:
+            rx.emoji = emoji
+    else:
+        db.session.add(Reaction(message_id=msg_id, user_id=user_id, emoji=emoji))
+    db.session.commit()
+    
+    all_rx = [{'user_id': r.user_id, 'emoji': r.emoji} for r in Reaction.query.filter_by(message_id=msg_id).all()]
+    out = {'message_id': msg_id, 'reactions': all_rx}
+    
+    if msg.group_id:
+        emit('reaction_updated', out, room=f"group_{msg.group_id}")
+    else:
+        emit('reaction_updated', out, room=f"user_{msg.sender_id}")
+        emit('reaction_updated', out, room=f"user_{msg.receiver_id}")
+
+@socketio.on('open_view_once')
+def handle_open_view_once(data):
+    msg_id = int(data['message_id'])
+    msg = Message.query.get(msg_id)
+    if msg and msg.is_view_once and not msg.is_opened:
+        msg.is_opened = True
+        db.session.commit()
+        out = {'message_id': msg.id, 'pesan': msg.pesan, 'tipe': msg.tipe}
+        if msg.group_id:
+            emit('view_once_opened', out, room=f"group_{msg.group_id}")
+        else:
+            emit('view_once_opened', out, room=f"user_{msg.sender_id}")
+            emit('view_once_opened', out, room=f"user_{msg.receiver_id}")
+
+@socketio.on('pesan_terbaca_langsung')
+def handle_read(data):
+    msg_id = data['message_id']
+    msg = Message.query.get(msg_id)
+    if msg:
+        msg.diterima = True
+        msg.dibaca = True
+        db.session.commit()
+        socketio.emit('pesan_dibaca', {'reader_id': msg.receiver_id, 'partner_id': msg.sender_id, 'message_id': msg_id}, room=f"user_{msg.sender_id}")
 
 @socketio.on('update_group_read')
 def handle_group_read(data):
