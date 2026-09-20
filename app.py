@@ -124,15 +124,14 @@ def room_private(friend_id):
     teman = User.query.get(friend_id)
     if not teman: return redirect(url_for('chat'))
     
+    # Dioptimalkan agar commit dilakukan sekali di akhir tanpa delay
     unread_msgs = Message.query.filter_by(sender_id=friend_id, receiver_id=user_id, group_id=None, dibaca=False).all()
     if unread_msgs:
         for p in unread_msgs:
             p.diterima = True
             p.dibaca = True
-            db.session.commit()
-            # Kirim sinyal dibaca individual untuk setiap pesan agar centang biru akurat
             socketio.emit('pesan_dibaca', {'reader_id': user_id, 'partner_id': friend_id, 'message_id': p.id}, room=f"user_{friend_id}")
-        
+        db.session.commit()
         socketio.emit('reset_badge', {'target_id': friend_id}, room=f"user_{user_id}")
 
     is_online = user_connections.get(friend_id, 0) > 0
@@ -215,29 +214,19 @@ def get_message_info(message_id):
     
     group_id = msg.group_id
     all_members = GroupMember.query.filter_by(group_id=group_id).all()
-    
     read_list = []
     delivered_list = []
     
     for mem in all_members:
         user = User.query.get(mem.user_id)
         if not user: continue
-        
         read_record = MessageRead.query.filter_by(message_id=message_id, user_id=user.id).first()
         if read_record:
-            read_list.append({
-                'nama': user.nama,
-                'waktu': read_record.read_at.strftime("%H:%M - %d/%m/%Y")
-            })
+            read_list.append({'nama': user.nama, 'waktu': read_record.read_at.strftime("%H:%M - %d/%m/%Y")})
         else:
-            delivered_list.append({
-                'nama': user.nama
-            })
+            delivered_list.append({'nama': user.nama})
             
-    return jsonify({
-        'read_by': read_list,
-        'delivered_to': delivered_list
-    })
+    return jsonify({'read_by': read_list, 'delivered_to': delivered_list})
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
@@ -253,7 +242,13 @@ def update_profile():
         foto.save(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
         user.foto_profil = new_filename
     db.session.commit()
-    socketio.emit('profile_updated', {'user_id': user.id, 'nama': user.nama, 'foto_profil': user.foto_profil})
+    
+    # Broadcast perubahan profil ke semua kontak secara realtime
+    contacts = Contact.query.filter_by(user_id=user.id).all()
+    for c in contacts:
+        socketio.emit('profile_updated', {'user_id': user.id, 'nama': user.nama, 'foto_profil': user.foto_profil}, room=f"user_{c.friend_id}")
+    socketio.emit('profile_updated', {'user_id': user.id, 'nama': user.nama, 'foto_profil': user.foto_profil}, room=f"user_{user.id}")
+    
     return redirect(url_for('chat'))
 
 @app.route('/update_group/<int:group_id>', methods=['POST'])

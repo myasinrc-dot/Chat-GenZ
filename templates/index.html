@@ -7,32 +7,39 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; display: flex; height: 100vh; overflow: hidden; }
-        .sidebar { width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 15px; background: #075e54; color: white; display: flex; align-items: center; justify-content: space-between; }
+        .sidebar { width: 100%; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; height: 100vh; }
+        .sidebar-header { padding: 15px; background: #075e54; color: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
         .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; }
+        .foto-profil { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #25d366; background: #fff; }
         .chat-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .chat-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #f0f0f0; text-decoration: none; color: inherit; cursor: pointer; }
         .chat-item:hover { background: #f5f5f5; }
-        .chat-item img { width: 45px; height: 45px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
+        .chat-item img { width: 45px; height: 45px; border-radius: 50%; margin-right: 12px; object-fit: cover; background: #eee; }
         .chat-details { flex: 1; }
         .chat-name { font-weight: bold; font-size: 15px; color: #333; margin-bottom: 3px; }
         .badge { background: #25d366; color: white; padding: 3px 7px; border-radius: 50%; font-size: 11px; font-weight: bold; }
-        .main-content { flex: 1; display: flex; align-items: center; justify-content: center; background: #efeae2; color: #666; text-align: center; }
         
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 300px; text-align: left; }
+        .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 320px; text-align: left; }
         .modal-content input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         .btn { background: #075e54; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
+
+        @media (min-width: 768px) {
+            .sidebar { width: 380px; }
+            .main-content { flex: 1; display: flex; align-items: center; justify-content: center; background: #efeae2; color: #666; text-align: center; }
+        }
+        @media (max-width: 767px) {
+            .main-content { display: none; }
+        }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <div class="sidebar-header">
             <div class="user-info" onclick="document.getElementById('modalProfil').style.display='flex'">
-                <img src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
+                <img id="myProfileImg" src="{% if user_aktif.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ user_aktif.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + user_aktif.foto_profil) }}{% endif %}" class="foto-profil">
                 <div>
-                    <div style="font-weight: bold; font-size: 15px;">{{ user_aktif.nama }}</div>
+                    <div id="myProfileName" style="font-weight: bold; font-size: 15px;">{{ user_aktif.nama }}</div>
                     <div style="font-size: 11px; color: #dcf8c6;">PIN: {{ user_aktif.pin }}</div>
                 </div>
             </div>
@@ -46,9 +53,9 @@
             <div style="padding: 8px 15px; font-weight: bold; font-size: 12px; background: #eee; color: #555;">CHAT PRIBADI</div>
             {% for item in daftar_teman %}
             <a href="/room/private/{{ item.user.id }}" class="chat-item" id="chat-friend-{{ item.user.id }}">
-                <img src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}">
+                <img id="friend-img-{{ item.user.id }}" src="{% if item.user.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.user.nama }}&background=random{% else %}{{ url_for('static', filename='uploads/' + item.user.foto_profil) }}{% endif %}">
                 <div class="chat-details">
-                    <div class="chat-name">{{ item.user.nama }}</div>
+                    <div class="chat-name" id="friend-name-{{ item.user.id }}">{{ item.user.nama }}</div>
                     <div style="font-size: 12px; color: #888;">{{ item.last_seen_str }}</div>
                 </div>
                 <div id="badge-friend-{{ item.user.id }}">
@@ -63,7 +70,7 @@
                 <img src="{% if item.group.foto_profil == 'default.png' %}https://ui-avatars.com/api/?name={{ item.group.nama_grup }}&background=075e54&color=fff{% else %}{{ url_for('static', filename='uploads/' + item.group.foto_profil) }}{% endif %}">
                 <div class="chat-details">
                     <div class="chat-name">{{ item.group.nama_grup }}</div>
-                    <div style="font-size: 12px; color: #888;">Grup Chat</div>
+                    <div style="font-size: 11px; color: #075e54; font-weight: bold;">PIN: {{ item.group.kode_grup }}</div>
                 </div>
                 <div id="badge-group-{{ item.group.id }}">
                     {% if item.unread > 0 %}<span class="badge">{{ item.unread }}</span>{% endif %}
@@ -101,19 +108,19 @@
             <h3>Tambah Kontak / Grup</h3>
             <form action="/add_contact" method="POST">
                 <label>PIN Teman:</label>
-                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman">
+                <input type="text" name="pin_teman" placeholder="Masukkan PIN Teman" required>
                 <button type="submit" class="btn">Tambah Kontak</button>
             </form>
             <hr style="margin: 15px 0;">
             <form action="/create_group" method="POST">
                 <label>Buat Grup:</label>
-                <input type="text" name="nama_grup" placeholder="Nama Grup Baru">
+                <input type="text" name="nama_grup" placeholder="Nama Grup Baru" required>
                 <button type="submit" class="btn" style="background: #25d366;">Buat Grup</button>
             </form>
             <hr style="margin: 15px 0;">
             <form action="/join_group" method="POST">
                 <label>Gabung Grup (Kode):</label>
-                <input type="text" name="kode_grup" placeholder="Kode 8 Karakter Grup">
+                <input type="text" name="kode_grup" placeholder="Kode 8 Karakter Grup" required>
                 <button type="submit" class="btn" style="background: #128c7e;">Gabung Grup</button>
             </form>
             <button type="button" onclick="document.getElementById('modalTambah').style.display='none'" style="margin-top: 15px; width: 100%; background: #ccc; border:none; padding:8px; border-radius:4px; cursor:pointer;">Tutup</button>
@@ -152,6 +159,20 @@
         socket.on('reset_badge_group', data => {
             const badgeEl = document.getElementById('badge-group-' + data.group_id);
             if (badgeEl) badgeEl.innerHTML = '';
+        });
+
+        // Realtime update nama & foto profil di kontak teman secara otomatis
+        socket.on('profile_updated', data => {
+            const nameEl = document.getElementById('friend-name-' + data.user_id);
+            const imgEl = document.getElementById('friend-img-' + data.user_id);
+            if (nameEl) nameEl.innerText = data.nama;
+            if (imgEl) {
+                imgEl.src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+            }
+            if (data.user_id == currentUserId) {
+                document.getElementById('myProfileName').innerText = data.nama;
+                document.getElementById('myProfileImg').src = data.foto_profil === 'default.png' ? `https://ui-avatars.com/api/?name=${data.nama}&background=random` : `/static/uploads/${data.foto_profil}`;
+            }
         });
     </script>
 </body>
