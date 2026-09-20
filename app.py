@@ -144,6 +144,12 @@ def room_group(group_id):
         member.last_read_id = last_msg.id
         db.session.commit()
         socketio.emit('reset_badge_group', {'group_id': group_id}, room=f"user_{user_id}")
+        
+        # Cek apakah semua member grup sudah membaca pesan terakhir ini
+        total_members = GroupMember.query.filter_by(group_id=group_id).count()
+        read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= last_msg.id).count()
+        if read_count >= total_members:
+            socketio.emit('group_msg_read_all', {'group_id': group_id, 'message_id': last_msg.id}, room=f"group_{group_id}")
 
     return render_template('room.html', user_aktif=User.query.get(user_id), target=grup, tipe='group', is_online=True, last_seen_str="Grup Chat")
 
@@ -154,12 +160,26 @@ def get_messages(friend_id):
         ((Message.sender_id == user_id) & (Message.receiver_id == friend_id) & (Message.group_id == None)) |
         ((Message.sender_id == friend_id) & (Message.receiver_id == user_id) & (Message.group_id == None))
     ).order_by(Message.waktu.asc()).all()
-    return jsonify([{'id': p.id, 'sender_id': p.sender_id, 'pesan': p.pesan, 'tipe': p.tipe, 'diterima': p.diterima, 'dibaca': p.dibaca} for p in pesan_list])
+    return jsonify([{
+        'id': p.id, 'sender_id': p.sender_id, 'pesan': p.pesan, 'tipe': p.tipe, 
+        'diterima': p.diterima, 'dibaca': p.dibaca, 'waktu': p.waktu.isoformat()
+    } for p in pesan_list])
 
 @app.route('/get_group_messages/<int:group_id>')
 def get_group_messages(group_id):
     pesan_list = Message.query.filter_by(group_id=group_id).order_by(Message.waktu.asc()).all()
-    return jsonify([{'id': p.id, 'sender_id': p.sender_id, 'sender_name': User.query.get(p.sender_id).nama, 'pesan': p.pesan, 'tipe': p.tipe} for p in pesan_list])
+    
+    # Hitung status apakah pesan dibaca oleh semua member
+    total_members = GroupMember.query.filter_by(group_id=group_id).count()
+    result = []
+    for p in pesan_list:
+        read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= p.id).count()
+        is_read_all = (read_count >= total_members)
+        result.append({
+            'id': p.id, 'sender_id': p.sender_id, 'sender_name': User.query.get(p.sender_id).nama, 
+            'pesan': p.pesan, 'tipe': p.tipe, 'waktu': p.waktu.isoformat(), 'is_read_all': is_read_all
+        })
+    return jsonify(result)
 
 @app.route('/get_group_members/<int:group_id>')
 def get_group_members(group_id):
@@ -266,12 +286,14 @@ def handle_connect():
                 db.session.commit()
             socketio.emit('user_status_change', {'user_id': u_id, 'status': 'online'})
             
+        # Kirim sinyal trigger notifikasi jika ada pesan yang masuk saat offline
         pending_msgs = Message.query.filter_by(receiver_id=u_id, diterima=False).all()
         if pending_msgs:
             for msg in pending_msgs:
                 msg.diterima = True
                 socketio.emit('status_diterima', {'message_id': msg.id}, room=f"user_{msg.sender_id}")
             db.session.commit()
+            socketio.emit('sync_offline_notifications', room=f"user_{u_id}")
 
         for m in GroupMember.query.filter_by(user_id=u_id).all():
             join_room(f"group_{m.group_id}")
@@ -289,7 +311,6 @@ def handle_disconnect():
                 if user:
                     user.last_seen = get_waktu_wita()
                     db.session.commit()
-                    # Broadcast status offline instan beserta waktu terakhir online
                     socketio.emit('user_status_change', {
                         'user_id': u_id, 
                         'status': 'offline', 
@@ -307,13 +328,15 @@ def handle_private_message(data):
         with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as fh: fh.write(base64.b64decode(encoded))
         pesan_teks = filename
 
-    # Cek apakah penerima benar-benar online. Jika offline, diterima = False (Centang 1)
     is_online = user_connections.get(receiver_id, 0) > 0
     pesan_baru = Message(sender_id=sender_id, receiver_id=receiver_id, pesan=pesan_teks, tipe=tipe, diterima=is_online, dibaca=False)
     db.session.add(pesan_baru)
     db.session.commit()
     
-    chat_data = {'id': pesan_baru.id, 'sender_id': sender_id, 'receiver_id': receiver_id, 'pesan': pesan_teks, 'tipe': tipe, 'diterima': is_online, 'dibaca': False}
+    chat_data = {
+        'id': pesan_baru.id, 'sender_id': sender_id, 'receiver_id': receiver_id, 
+        'pesan': pesan_teks, 'tipe': tipe, 'diterima': is_online, 'dibaca': False, 'waktu': pesan_baru.waktu.isoformat()
+    }
     
     emit('terima_pesan_private', chat_data, room=f"user_{sender_id}")
     emit('terima_pesan_private', chat_data, room=f"user_{receiver_id}")
@@ -348,10 +371,28 @@ def handle_group_message(data):
     db.session.commit()
 
     sender = User.query.get(sender_id)
-    chat_data = {'id': pesan_baru.id, 'sender_id': sender_id, 'sender_name': sender.nama, 'group_id': group_id, 'pesan': pesan_teks, 'tipe': tipe}
+    chat_data = {
+        'id': pesan_baru.id, 'sender_id': sender_id, 'sender_name': sender.nama, 
+        'group_id': group_id, 'pesan': pesan_teks, 'tipe': tipe, 'waktu': pesan_baru.waktu.isoformat(), 'is_read_all': False
+    }
     
     emit('terima_pesan_grup', chat_data, room=f"group_{group_id}")
     emit('notif_grup_baru', {'group_id': group_id, 'sender_id': sender_id}, room=f"group_{group_id}")
+
+@socketio.on('update_group_read')
+def handle_group_read(data):
+    group_id = int(data['group_id'])
+    user_id = int(data['user_id'])
+    member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
+    last_msg = Message.query.filter_by(group_id=group_id).order_by(Message.id.desc()).first()
+    if member and last_msg:
+        member.last_read_id = last_msg.id
+        db.session.commit()
+        
+        total_members = GroupMember.query.filter_by(group_id=group_id).count()
+        read_count = GroupMember.query.filter(GroupMember.group_id == group_id, GroupMember.last_read_id >= last_msg.id).count()
+        if read_count >= total_members:
+            socketio.emit('group_msg_read_all', {'group_id': group_id, 'message_id': last_msg.id}, room=f"group_{group_id}")
 
 @socketio.on('typing_private')
 def handle_typing_private(data):

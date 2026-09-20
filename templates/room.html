@@ -104,9 +104,21 @@
             } catch (e) {}
         }
 
+        // Fungsi Format Jam otomatis menyesuaikan waktu lokal HP pengguna (WITA/WIB/WIT, dll)
+        function formatWaktuLokal(isoString) {
+            if (!isoString) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            const date = new Date(isoString);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
         // Muat Riwayat Chat
         fetch(chatType === 'private' ? '/get_messages/' + targetId : '/get_group_messages/' + targetId)
-            .then(r => r.json()).then(data => data.forEach(chatType === 'private' ? renderPrivate : renderGroup));
+            .then(r => r.json()).then(data => {
+                data.forEach(chatType === 'private' ? renderPrivate : renderGroup);
+                if (chatType === 'group') {
+                    socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
+                }
+            });
 
         function bukaModalGrup() {
             document.getElementById('modalGrup').style.display = 'flex';
@@ -124,7 +136,6 @@
         btnKirim.onclick = function() {
             const pesanVal = inputPesan.value.trim();
             if (pesanVal !== '') {
-                // RENDER LOKAL SEBELUM DIKIRIM (Solusi agar pesan tetap tercatat saat offline/tanpa internet)
                 const dummyChat = {
                     id: 'local_' + Date.now(),
                     sender_id: currentUserId,
@@ -133,7 +144,8 @@
                     pesan: pesanVal,
                     tipe: 'text',
                     diterima: false,
-                    dibaca: false
+                    dibaca: false,
+                    waktu: new Date().toISOString()
                 };
                 if(chatType === 'private') renderPrivate(dummyChat);
                 else renderGroup(dummyChat);
@@ -162,7 +174,8 @@
                         tipe: 'image',
                         diterima: false,
                         dibaca: false,
-                        is_uploading: true
+                        is_uploading: true,
+                        waktu: new Date().toISOString()
                     };
                     if(chatType === 'private') renderPrivate(dummyChat);
                     else renderGroup(dummyChat);
@@ -214,9 +227,9 @@
             }
         });
         
-        // ---- NOTIFIKASI UNIVERSAL (Selalu bunyi & muncul di room manapun) ----
+        // Notifikasi Universal & Suara di Room Manapun
         socket.on('notif_pesan_baru', data => {
-            if (chatType === 'private' && data.sender_id == targetId) return; // Jika sedang di room dia, jangan anggap unread
+            if (chatType === 'private' && data.sender_id == targetId) return;
             playSound();
         });
 
@@ -225,13 +238,17 @@
             if (data.sender_id != currentUserId) playSound();
         });
 
+        socket.on('sync_offline_notifications', () => {
+            playSound();
+            setTimeout(() => location.reload(), 1000);
+        });
+
         socket.on('terima_pesan_private', data => {
             if (chatType !== 'private') return;
             if ((data.sender_id == targetId && data.receiver_id == currentUserId) || 
                 (data.sender_id == currentUserId && data.receiver_id == targetId)) {
                 
                 if (data.sender_id == currentUserId) {
-                    // Hapus pesan lokal dummy milik pengirim dan ganti dengan data valid dari server
                     const localEls = document.querySelectorAll('.local-msg-pending');
                     if (localEls.length > 0) localEls[localEls.length - 1].remove();
                 }
@@ -250,6 +267,7 @@
                     if (localEls.length > 0) localEls[localEls.length - 1].remove();
                 }
                 renderGroup(data);
+                socket.emit('update_group_read', { group_id: targetId, user_id: currentUserId });
             }
         });
 
@@ -269,6 +287,16 @@
             }
         });
 
+        // WhatsApp Group Read Ticks (Centang Biru jika semua sudah baca)
+        socket.on('group_msg_read_all', data => {
+            if (chatType === 'group' && data.group_id == targetId) {
+                document.querySelectorAll('.group-centang').forEach(el => {
+                    el.innerHTML = '✓✓';
+                    el.style.color = '#34b7f1';
+                });
+            }
+        });
+
         function renderPrivate(chat) {
             const li = document.createElement('li'), isSaya = (chat.sender_id == currentUserId);
             li.classList.add(isSaya ? 'chat-saya' : 'chat-teman');
@@ -284,12 +312,15 @@
             }
 
             li.innerHTML = content;
+            const jamStr = formatWaktuLokal(chat.waktu);
             
             if (isSaya) {
                 let symbol = '✓', color = '#777', isRead = "false";
                 if (chat.dibaca) { symbol = '✓✓'; color = '#34b7f1'; isRead = "true"; }
                 else if (chat.diterima) { symbol = '✓✓'; }
-                li.innerHTML += `<div class="chat-info-meta"><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
+                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span><span id="centang-${chat.id}" class="status-centang" data-dibaca="${isRead}" style="color: ${color}; font-weight: bold;">${symbol}</span></div>`;
+            } else {
+                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
             }
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
@@ -311,7 +342,14 @@
             }
 
             li.innerHTML = sender + content;
-            if (isSaya) li.innerHTML += `<div class="chat-info-meta"><span style="color: #777; font-weight: bold;">✓</span></div>`;
+            const jamStr = formatWaktuLokal(chat.waktu);
+
+            if (isSaya) {
+                let tickColor = chat.is_read_all ? '#34b7f1' : '#777';
+                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span><span class="group-centang" style="color: ${tickColor}; font-weight: bold;">✓✓</span></div>`;
+            } else {
+                li.innerHTML += `<div class="chat-info-meta"><span>${jamStr}</span></div>`;
+            }
             boxChat.appendChild(li); boxChat.scrollTop = boxChat.scrollHeight;
         }
     </script>

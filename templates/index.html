@@ -176,6 +176,11 @@
                 }
             }
         });
+
+        socket.on('sync_offline_notifications', () => {
+            playSound();
+            setTimeout(() => location.reload(), 1000);
+        });
     </script>
 </body>
 </html>
