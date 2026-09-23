@@ -1,6 +1,7 @@
 Flask
-Flask-SocketIO
-eventlet
-gunicorn
 Flask-SQLAlchemy
-
+Flask-SocketIO
+gunicorn
+gevent
+gevent-websocket
+psycopg2-binary

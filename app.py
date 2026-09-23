@@ -11,15 +11,25 @@ from sqlalchemy import inspect, text
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'kunci_rahasia_bebas_123'
+
+# Masa aktif sesi login diset 10 tahun (3650 hari)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650)
+
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'static', 'uploads')
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chatgenz.db'
+# Mendukung PostgreSQL Cloud dan SQLite Lokal
+db_uri = os.environ.get('DATABASE_URL', 'sqlite:///chatgenz.db')
+if db_uri.startswith("postgres://"):
+    db_uri = db_uri.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-socketio = SocketIO(app, async_mode='eventlet', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=10, ping_interval=5)
+# Mode async gevent untuk kompatibilitas penuh dengan Gunicorn & WebSocket
+socketio = SocketIO(app, async_mode='gevent', manage_session=False, cors_allowed_origins="*", max_http_buffer_size=100000000, ping_timeout=10, ping_interval=5)
 
 user_connections = {}
 
@@ -170,13 +180,24 @@ def format_message(p):
 def login():
     if 'user_id' in session: return redirect(url_for('chat'))
     if request.method == 'POST':
-        nomor_hp = request.form.get('nomor_hp')
+        raw_hp = request.form.get('nomor_hp', '')
+        # Normalisasi nomor HP agar selalu seragam (hapus spasi, strip, dan samakan +62/62)
+        nomor_hp = raw_hp.strip().replace(' ', '').replace('-', '').replace('+', '')
+        if nomor_hp.startswith('62'):
+            nomor_hp = '0' + nomor_hp[2:]
+
+        if not nomor_hp:
+            return render_template('login.html')
+
         user = User.query.filter_by(nomor_hp=nomor_hp).first()
         if not user:
             user = User(nomor_hp=nomor_hp, pin=generate_pin())
             db.session.add(user)
+            
         user.last_seen = get_waktu_wita()
         db.session.commit()
+        
+        session.permanent = True
         session['user_id'] = user.id
         return redirect(url_for('chat'))
     return render_template('login.html')
